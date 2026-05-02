@@ -1,0 +1,32 @@
+{
+  "target_candidates": [
+    "rental_count",
+    "return_count",
+    "net_demand"
+  ],
+  "time_features": [
+    "hour",
+    "minute",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "weather_features": [
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "station_static_features": [
+    "latitude",
+    "longitude",
+    "district",
+    "dock_count_raw",
+    "operation_type"
+  ],
+  "trip_aggregate_features": [
+    "avg_duration_min",
+    "avg_distance_m"
+  ]
+}
