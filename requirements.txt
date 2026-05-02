@@ -1,0 +1,12 @@
+numpy
+pandas
+pyarrow
+scikit-learn
+matplotlib
+torch
+tqdm
+pyyaml
+wandb
+holidays
+openpyxl
+xlrd
