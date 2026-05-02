@@ -31,7 +31,9 @@ Preprocess raw rental, weather, and station metadata files:
 python src/data/preprocess/preprocess_data.py --overwrite
 ```
 
-This writes cleaned parquet, numpy, and JSON files under `data/preprocessed/2025` by default.
+This writes shared station files under `data/preprocessed/station` and
+date-specific weather/panel files under `data/preprocessed/2025` by default.
+Existing shared station files are reused unless you pass `--rebuild-station`.
 
 Build LSTM-ready arrays from the preprocessed panel:
 
@@ -79,4 +81,3 @@ python src/training/naive_training/naive_baseline.py
 - holidays
 - openpyxl
 - xlrd
-

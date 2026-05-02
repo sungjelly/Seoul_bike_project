@@ -8,7 +8,8 @@ train models, create graph edges, or run experiments.
 - `preprocess/preprocess_data.py`
   - Builds the model-agnostic preprocessed base data from raw rentals, weather,
     and station metadata.
-  - Main output: `data/preprocessed/station_time_panel.parquet`.
+  - Shared station output: `data/preprocessed/station/`.
+  - Main time-range output: `data/preprocessed/<range>/station_time_panel.parquet`.
 
 - `lstm_baseline/make_lstm_dataset.py`
   - Builds the supervised baseline LSTM dataset from `data/preprocessed`.
@@ -42,6 +43,10 @@ python src/data/preprocess/preprocess_data.py \
   --output-dir data/preprocessed/2025 \
   --overwrite
 ```
+
+Station metadata is written once to `data/preprocessed/station` and reused by
+later preprocessing runs. Use `--rebuild-station` only when you intentionally
+want to recreate the shared station files from raw metadata.
 
 Partial 2024 example:
 

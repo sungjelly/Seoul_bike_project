@@ -78,11 +78,14 @@ PANEL_COLUMNS = [
     "operation_type",
 ]
 
-OUTPUT_FILES = [
+STATION_OUTPUT_FILES = [
     "station_metadata_clean.parquet",
     "station_numbers.npy",
     "station_coords.npy",
     "station_districts.json",
+]
+
+TIME_OUTPUT_FILES = [
     "weather_30min.parquet",
     "station_time_panel.parquet",
     "feature_columns.json",
@@ -167,13 +170,35 @@ def parse_date_range(start_date: str, end_date: str) -> tuple[pd.Timestamp, pd.T
 
 
 def validate_output_dir(output_dir: Path, overwrite: bool) -> None:
-    existing = [output_dir / filename for filename in OUTPUT_FILES if (output_dir / filename).exists()]
+    existing = [output_dir / filename for filename in TIME_OUTPUT_FILES if (output_dir / filename).exists()]
     if existing and not overwrite:
         raise FileExistsError(
             "Output files already exist. Use --overwrite to replace them, or choose a new "
             f"--output-dir. Existing files: {[str(path) for path in existing]}"
         )
     output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def station_output_paths(station_output_dir: Path) -> dict[str, Path]:
+    return {filename: station_output_dir / filename for filename in STATION_OUTPUT_FILES}
+
+
+def validate_station_output_dir(station_output_dir: Path, rebuild_station: bool) -> bool:
+    paths = station_output_paths(station_output_dir)
+    existing = [path for path in paths.values() if path.exists()]
+    if rebuild_station:
+        station_output_dir.mkdir(parents=True, exist_ok=True)
+        return False
+    if not existing:
+        station_output_dir.mkdir(parents=True, exist_ok=True)
+        return False
+    if len(existing) != len(paths):
+        missing = [str(path) for path in paths.values() if not path.exists()]
+        raise FileNotFoundError(
+            "Found partial shared station outputs. Use --rebuild-station to recreate them, "
+            f"or restore the missing files: {missing}"
+        )
+    return True
 
 
 def month_periods_in_range(start_ts: pd.Timestamp, end_exclusive: pd.Timestamp) -> set[pd.Period]:
@@ -307,6 +332,63 @@ def load_station_metadata(raw_dir: Path) -> pd.DataFrame:
     selected = selected.drop_duplicates("station_number", keep="first")
     selected = selected[STATION_OUTPUT_COLUMNS].sort_values("station_number").reset_index(drop=True)
     return selected
+
+
+def load_shared_station_metadata(station_output_dir: Path) -> pd.DataFrame:
+    paths = station_output_paths(station_output_dir)
+    station_metadata = pd.read_parquet(paths["station_metadata_clean.parquet"])
+    station_numbers = np.load(paths["station_numbers.npy"])
+    station_coords = np.load(paths["station_coords.npy"])
+    station_districts = json.loads(
+        paths["station_districts.json"].read_text(encoding="utf-8")
+    )
+
+    expected_columns = set(STATION_OUTPUT_COLUMNS)
+    missing_columns = expected_columns - set(station_metadata.columns)
+    if missing_columns:
+        raise ValueError(
+            "Shared station metadata is missing required columns: "
+            f"{sorted(missing_columns)}"
+        )
+    if len(station_metadata) != len(station_numbers):
+        raise ValueError(
+            "Shared station metadata row count does not match station_numbers.npy length: "
+            f"{len(station_metadata)} != {len(station_numbers)}"
+        )
+    if station_coords.shape != (len(station_numbers), 2):
+        raise ValueError(
+            "station_coords.npy must have shape (num_stations, 2): "
+            f"found {station_coords.shape}"
+        )
+
+    metadata_numbers = station_metadata["station_number"].to_numpy(dtype=np.int64)
+    if not np.array_equal(metadata_numbers, station_numbers.astype(np.int64)):
+        raise ValueError("station_numbers.npy does not match station_metadata_clean.parquet order.")
+
+    metadata_coords = station_metadata[["latitude", "longitude"]].to_numpy(dtype=np.float64)
+    if not np.allclose(metadata_coords, station_coords.astype(np.float64), equal_nan=True):
+        raise ValueError("station_coords.npy does not match station_metadata_clean.parquet.")
+
+    expected_districts = {str(int(number)) for number in metadata_numbers}
+    if set(station_districts) != expected_districts:
+        raise ValueError("station_districts.json keys do not match station numbers.")
+
+    return station_metadata[STATION_OUTPUT_COLUMNS].copy()
+
+
+def write_shared_station_metadata(station_output_dir: Path, station_metadata: pd.DataFrame) -> None:
+    station_output_dir.mkdir(parents=True, exist_ok=True)
+    station_metadata = station_metadata[STATION_OUTPUT_COLUMNS].sort_values("station_number").reset_index(drop=True)
+    station_numbers = station_metadata["station_number"].to_numpy(dtype=np.int64)
+    station_coords = station_metadata[["latitude", "longitude"]].to_numpy(dtype=np.float64)
+    station_districts = {
+        str(int(row.station_number)): row.district for row in station_metadata.itertuples(index=False)
+    }
+
+    station_metadata.to_parquet(station_output_dir / "station_metadata_clean.parquet", index=False)
+    np.save(station_output_dir / "station_numbers.npy", station_numbers)
+    np.save(station_output_dir / "station_coords.npy", station_coords)
+    write_json(station_output_dir / "station_districts.json", station_districts)
 
 
 def infer_station_column_roles(df: pd.DataFrame, path: Path) -> dict[str, str]:
@@ -790,12 +872,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rental-dir", type=Path, default=Path("data/raw/rentals"))
     parser.add_argument("--weather-dir", type=Path, default=Path("data/raw/weather"))
     parser.add_argument("--output-dir", type=Path, default=Path("data/preprocessed/2025"))
+    parser.add_argument("--station-output-dir", type=Path, default=Path("data/preprocessed/station"))
     parser.add_argument("--start-date", type=str, default=DEFAULT_START_DATE)
     parser.add_argument("--end-date", type=str, default=DEFAULT_END_DATE)
     parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Replace known preprocessing output files if they already exist.",
+    )
+    parser.add_argument(
+        "--rebuild-station",
+        action="store_true",
+        help="Rebuild shared station outputs from raw station metadata.",
     )
     parser.add_argument("--rental-chunksize", type=int, default=1_000_000)
     parser.add_argument("--station-batch-size", type=int, default=250)
@@ -806,6 +894,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = parse_args()
     validate_output_dir(args.output_dir, args.overwrite)
+    reuse_station_outputs = validate_station_output_dir(
+        args.station_output_dir,
+        args.rebuild_station,
+    )
 
     start_ts, end_exclusive, panel_end_ts, timestamp_grid = parse_date_range(
         args.start_date,
@@ -815,9 +907,15 @@ def main() -> None:
     years = sorted({int(year) for year in timestamps["timestamp"].dt.year.unique().tolist()})
     logging.info("Requested date range: %s <= timestamp < %s", start_ts, end_exclusive)
 
-    station_metadata_all = load_station_metadata(args.raw_dir)
-    raw_station_count = len(station_metadata_all)
-    logging.info("Stations loaded: %s", raw_station_count)
+    if reuse_station_outputs:
+        station_metadata = load_shared_station_metadata(args.station_output_dir)
+        logging.info("Loaded shared station outputs from %s", args.station_output_dir)
+    else:
+        station_metadata = load_station_metadata(args.raw_dir)
+        write_shared_station_metadata(args.station_output_dir, station_metadata)
+        logging.info("Wrote shared station outputs to %s", args.station_output_dir)
+    station_count = len(station_metadata)
+    logging.info("Stations available for panel: %s", station_count)
 
     weather_30min, weather_rows_loaded = load_weather(
         args.weather_dir,
@@ -832,7 +930,7 @@ def main() -> None:
 
     rental_counts, return_counts, trip_stats, rental_stats, used_stations = process_rentals(
         args.rental_dir,
-        set(station_metadata_all["station_number"].tolist()),
+        set(station_metadata["station_number"].tolist()),
         args.rental_chunksize,
         start_ts,
         end_exclusive,
@@ -850,26 +948,10 @@ def main() -> None:
     logging.info("Rental-start rows in requested period: %s", rental_stats["rental_rows_in_requested_period"])
     logging.info("Return rows in requested period: %s", rental_stats["return_rows_in_requested_period"])
 
-    station_metadata = (
-        station_metadata_all[station_metadata_all["station_number"].isin(used_stations)]
-        .sort_values("station_number")
-        .reset_index(drop=True)
-    )
-    matched_station_count = len(station_metadata)
-    if matched_station_count == 0:
+    active_station_count = len(used_stations)
+    if active_station_count == 0:
         raise ValueError("No station metadata rows matched cleaned rental data.")
-    logging.info("Stations after matching with rentals: %s", matched_station_count)
-
-    station_numbers = station_metadata["station_number"].to_numpy(dtype=np.int64)
-    station_coords = station_metadata[["latitude", "longitude"]].to_numpy(dtype=np.float64)
-    station_districts = {
-        str(int(row.station_number)): row.district for row in station_metadata.itertuples(index=False)
-    }
-
-    station_metadata.to_parquet(args.output_dir / "station_metadata_clean.parquet", index=False)
-    np.save(args.output_dir / "station_numbers.npy", station_numbers)
-    np.save(args.output_dir / "station_coords.npy", station_coords)
-    write_json(args.output_dir / "station_districts.json", station_districts)
+    logging.info("Stations with rental or return activity in requested period: %s", active_station_count)
     write_json(args.output_dir / "feature_columns.json", build_feature_columns())
 
     panel_rows, panel_columns, missing_values = write_panel_in_batches(
@@ -895,12 +977,15 @@ def main() -> None:
         "rental_rows_dropped": int(rental_rows_dropped),
         "rental_rows_in_requested_period": int(rental_stats["rental_rows_in_requested_period"]),
         "return_rows_in_requested_period": int(rental_stats["return_rows_in_requested_period"]),
-        "raw_station_count": int(raw_station_count),
-        "matched_station_count": int(matched_station_count),
+        "station_count": int(station_count),
+        "active_station_count": int(active_station_count),
+        "reused_station_outputs": bool(reuse_station_outputs),
+        "station_output_dir": str(args.station_output_dir),
+        "time_output_dir": str(args.output_dir),
         "weather_rows_loaded": int(weather_rows_loaded),
         "weather_30min_rows": int(len(weather_30min)),
         "num_timestamps": int(len(timestamps)),
-        "num_stations": int(matched_station_count),
+        "num_stations": int(station_count),
         "station_time_panel_rows": int(panel_rows),
         "station_time_panel_columns": panel_columns,
         "missing_values_by_column": missing_values,
