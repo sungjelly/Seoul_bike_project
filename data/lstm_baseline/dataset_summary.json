@@ -1,0 +1,134 @@
+{
+  "T": 17520,
+  "S": 2758,
+  "sequence_length": 8,
+  "horizon": 1,
+  "sequence_features": [
+    "rental_count",
+    "return_count",
+    "net_demand",
+    "avg_duration_min",
+    "avg_distance_m",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity",
+    "hour_sin",
+    "hour_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "target_columns": [
+    "rental_count",
+    "return_count"
+  ],
+  "static_numeric_columns": [
+    "latitude",
+    "longitude",
+    "dock_count_raw",
+    "operation_type_id"
+  ],
+  "categorical_features": [
+    "station_index",
+    "district_id"
+  ],
+  "num_train_target_timestamps": 13096,
+  "num_validation_target_timestamps": 1488,
+  "num_test_target_timestamps": 2928,
+  "num_train_samples": 36118768,
+  "num_validation_samples": 4103904,
+  "num_test_samples": 8075424,
+  "train_target_date_range": {
+    "start": "2025-01-01 04:00:00",
+    "end": "2025-09-30 23:30:00"
+  },
+  "validation_target_date_range": {
+    "start": "2025-10-01 00:00:00",
+    "end": "2025-10-31 23:30:00"
+  },
+  "test_target_date_range": {
+    "start": "2025-11-01 00:00:00",
+    "end": "2025-12-31 23:30:00"
+  },
+  "dynamic_feature_shape": [
+    17520,
+    2758,
+    17
+  ],
+  "target_shape": [
+    17520,
+    2758,
+    2
+  ],
+  "raw_target_shape": [
+    17520,
+    2758,
+    2
+  ],
+  "static_numeric_shape": [
+    2758,
+    4
+  ],
+  "district_id_shape": [
+    2758
+  ],
+  "operation_type_id_shape": [
+    2758
+  ],
+  "dynamic_scaled_features": [
+    "rental_count",
+    "return_count",
+    "net_demand",
+    "avg_duration_min",
+    "avg_distance_m",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "dynamic_unscaled_features": [
+    "hour_sin",
+    "hour_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "static_scaled_features": [
+    "latitude",
+    "longitude",
+    "dock_count_raw"
+  ],
+  "static_unscaled_features": [
+    "operation_type_id"
+  ],
+  "target_transform_info": {
+    "rental_count": "log1p",
+    "return_count": "log1p"
+  },
+  "scaler_file_path": "data\\lstm_baseline\\scalers.json",
+  "feature_config_file_path": "data\\lstm_baseline\\feature_config.json",
+  "output_file_paths": {
+    "dynamic_features.npy": "data\\lstm_baseline\\dynamic_features.npy",
+    "targets.npy": "data\\lstm_baseline\\targets.npy",
+    "targets_raw.npy": "data\\lstm_baseline\\targets_raw.npy",
+    "static_numeric.npy": "data\\lstm_baseline\\static_numeric.npy",
+    "station_numbers.npy": "data\\lstm_baseline\\station_numbers.npy",
+    "timestamps.npy": "data\\lstm_baseline\\timestamps.npy",
+    "district_ids.npy": "data\\lstm_baseline\\district_ids.npy",
+    "operation_type_ids.npy": "data\\lstm_baseline\\operation_type_ids.npy",
+    "station_index_map.json": "data\\lstm_baseline\\station_index_map.json",
+    "district_vocab.json": "data\\lstm_baseline\\district_vocab.json",
+    "operation_type_vocab.json": "data\\lstm_baseline\\operation_type_vocab.json",
+    "splits.json": "data\\lstm_baseline\\splits.json",
+    "scalers.json": "data\\lstm_baseline\\scalers.json",
+    "feature_config.json": "data\\lstm_baseline\\feature_config.json",
+    "dataset_summary.json": "data\\lstm_baseline\\dataset_summary.json"
+  }
+}

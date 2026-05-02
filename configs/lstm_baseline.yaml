@@ -1,0 +1,103 @@
+project:
+  name: Seoul_Bike_Project
+  entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
+  run_name: baseline_lstm_v1
+  tags:
+    - baseline
+    - lstm
+    - smooth_l1
+    - next_30min
+  notes: Baseline station-level LSTM for Seoul bike next-window demand prediction.
+
+paths:
+  data_dir: data/lstm_baseline
+  checkpoint_dir: checkpoints/lstm_baseline
+  model_dir: models/lstm_baseline
+  log_dir: logs/lstm_baseline
+
+data:
+  sequence_length: 8
+  horizon: 1
+  input_dim: 17
+  static_numeric_dim: 4
+  output_dim: 2
+  num_workers: 2
+  pin_memory: true
+  persistent_workers: true
+  mmap_mode: r
+
+model:
+  architecture: BaselineLSTM
+  hidden_dim: 64
+  num_layers: 1
+  station_embedding_dim: 16
+  district_embedding_dim: 8
+  mlp_hidden_dim: 128
+  dropout: 0.1
+
+training:
+  loss: SmoothL1Loss
+  smooth_l1_beta: 1.0
+  optimizer: AdamW
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  batch_size: 4096
+  max_epochs: 12
+  gradient_clip_norm: 1.0
+  mixed_precision: true
+  seed: 42
+  device: auto
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: min
+  factor: 0.5
+  patience: 2
+  min_lr: 0.000001
+
+early_stopping:
+  enabled: true
+  patience: 5
+  monitor: val_total_mae
+  mode: min
+
+checkpointing:
+  save_every_epoch: false
+  save_best: true
+  save_last: true
+  keep_last_n: 0
+  monitor: val_total_mae
+  mode: min
+  save_optimizer_state: true
+  save_scheduler_state: true
+  save_amp_scaler_state: true
+  save_rng_state: true
+
+resume:
+  enabled: true
+  checkpoint_path: null
+  mode: auto
+  allow_hparam_override: true
+  reset_optimizer: false
+  reset_scheduler: false
+
+wandb:
+  enabled: true
+  entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
+  project: Seoul_Bike_Project
+  name: baseline_lstm_v1
+  group: lstm_baseline
+  job_type: train
+  resume: allow
+  run_id: null
+  log_model: false
+  watch_model: false
+  log_every_n_steps: 100
+
+validation:
+  eval_every_epoch: true
+  max_val_batches: null
+
+testing:
+  run_test_after_training: true
+  checkpoint: best

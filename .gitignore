@@ -1,0 +1,38 @@
+# Root-level large data and outputs
+/data/
+/checkpoints/
+/models/
+/logs/
+/wandb/
+/runs/
+
+# Large file types
+*.npy
+*.parquet
+*.pt
+*.pth
+*.ckpt
+*.xlsx
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+*.key
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/

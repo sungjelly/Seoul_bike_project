@@ -1,0 +1,304 @@
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+
+import numpy as np
+
+
+BASELINES = {
+    "zero": {"history": 0},
+    "previous_window": {"history": 1},
+    "same_time_yesterday": {"history": 48},
+    "same_time_last_week": {"history": 336},
+    "recent_mean_4h": {"history": 8},
+    "recent_mean_24h": {"history": 48},
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Evaluate naive raw-count demand baselines.")
+    parser.add_argument("--data-dir", type=Path, default=Path("data/lstm_baseline"))
+    parser.add_argument("--output-dir", type=Path, default=Path("logs/naive_baseline"))
+    parser.add_argument("--splits", nargs="+", default=["val", "test"])
+    parser.add_argument("--chunk-size", type=int, default=128)
+    return parser.parse_args()
+
+
+def load_split_indices(data_dir: Path) -> dict[str, np.ndarray]:
+    splits_path = data_dir / "splits.json"
+    with splits_path.open("r", encoding="utf-8") as f:
+        splits = json.load(f)
+    return {
+        "train": np.asarray(splits["train_target_indices"], dtype=np.int64),
+        "val": np.asarray(splits["val_target_indices"], dtype=np.int64),
+        "test": np.asarray(splits["test_target_indices"], dtype=np.int64),
+    }
+
+
+def make_predictions(
+    baseline_name: str,
+    targets_raw: np.ndarray,
+    target_indices: np.ndarray,
+) -> np.ndarray:
+    if baseline_name == "zero":
+        shape = (len(target_indices), targets_raw.shape[1], targets_raw.shape[2])
+        return np.zeros(shape, dtype=np.float32)
+    if baseline_name == "previous_window":
+        return np.asarray(targets_raw[target_indices - 1, :, :], dtype=np.float32)
+    if baseline_name == "same_time_yesterday":
+        return np.asarray(targets_raw[target_indices - 48, :, :], dtype=np.float32)
+    if baseline_name == "same_time_last_week":
+        return np.asarray(targets_raw[target_indices - 336, :, :], dtype=np.float32)
+    if baseline_name == "recent_mean_4h":
+        return rolling_history_mean(targets_raw, target_indices, window=8)
+    if baseline_name == "recent_mean_24h":
+        return rolling_history_mean(targets_raw, target_indices, window=48)
+    raise ValueError(f"Unknown baseline: {baseline_name}")
+
+
+def rolling_history_mean(
+    targets_raw: np.ndarray,
+    target_indices: np.ndarray,
+    window: int,
+) -> np.ndarray:
+    predictions = np.empty(
+        (len(target_indices), targets_raw.shape[1], targets_raw.shape[2]),
+        dtype=np.float32,
+    )
+    for row, target_idx in enumerate(target_indices):
+        predictions[row] = np.mean(
+            targets_raw[target_idx - window : target_idx, :, :],
+            axis=0,
+            dtype=np.float64,
+        )
+    return predictions
+
+
+def init_accumulators() -> dict[str, float | int]:
+    return {
+        "total_abs": 0.0,
+        "total_sq": 0.0,
+        "total_count": 0,
+        "rental_abs": 0.0,
+        "rental_sq": 0.0,
+        "rental_count": 0,
+        "return_abs": 0.0,
+        "return_sq": 0.0,
+        "return_count": 0,
+        "skipped_timestamps": 0,
+        "evaluated_timestamps": 0,
+    }
+
+
+def update_accumulators(acc: dict[str, float | int], pred: np.ndarray, true: np.ndarray) -> None:
+    diff = pred.astype(np.float64) - true.astype(np.float64)
+    abs_diff = np.abs(diff)
+    sq_diff = np.square(diff)
+
+    chunk_t, num_stations, num_targets = diff.shape
+    acc["total_abs"] += float(abs_diff.sum())
+    acc["total_sq"] += float(sq_diff.sum())
+    acc["total_count"] += int(chunk_t * num_stations * num_targets)
+
+    rental_diff = diff[:, :, 0]
+    return_diff = diff[:, :, 1]
+    acc["rental_abs"] += float(np.abs(rental_diff).sum())
+    acc["rental_sq"] += float(np.square(rental_diff).sum())
+    acc["rental_count"] += int(chunk_t * num_stations)
+    acc["return_abs"] += float(np.abs(return_diff).sum())
+    acc["return_sq"] += float(np.square(return_diff).sum())
+    acc["return_count"] += int(chunk_t * num_stations)
+    acc["evaluated_timestamps"] += int(chunk_t)
+
+
+def finalize_metrics(acc: dict[str, float | int]) -> dict[str, float | int]:
+    if acc["total_count"] == 0:
+        return {
+            "total_mae": None,
+            "total_rmse": None,
+            "rental_mae": None,
+            "rental_rmse": None,
+            "return_mae": None,
+            "return_rmse": None,
+            "evaluated_timestamps": 0,
+            "skipped_timestamps": int(acc["skipped_timestamps"]),
+        }
+    return {
+        "total_mae": float(acc["total_abs"] / acc["total_count"]),
+        "total_rmse": float(np.sqrt(acc["total_sq"] / acc["total_count"])),
+        "rental_mae": float(acc["rental_abs"] / acc["rental_count"]),
+        "rental_rmse": float(np.sqrt(acc["rental_sq"] / acc["rental_count"])),
+        "return_mae": float(acc["return_abs"] / acc["return_count"]),
+        "return_rmse": float(np.sqrt(acc["return_sq"] / acc["return_count"])),
+        "evaluated_timestamps": int(acc["evaluated_timestamps"]),
+        "skipped_timestamps": int(acc["skipped_timestamps"]),
+    }
+
+
+def compute_metrics_for_baseline(
+    baseline_name: str,
+    targets_raw: np.ndarray,
+    split_indices: np.ndarray,
+    chunk_size: int,
+) -> dict[str, float | int]:
+    required_history = int(BASELINES[baseline_name]["history"])
+    valid_indices = split_indices[split_indices >= required_history]
+    acc = init_accumulators()
+    acc["skipped_timestamps"] = int(len(split_indices) - len(valid_indices))
+
+    for start in range(0, len(valid_indices), chunk_size):
+        chunk_indices = valid_indices[start : start + chunk_size]
+        true = np.asarray(targets_raw[chunk_indices, :, :], dtype=np.float32)
+        pred = make_predictions(baseline_name, targets_raw, chunk_indices)
+        update_accumulators(acc, pred, true)
+
+    return finalize_metrics(acc)
+
+
+def evaluate_split(
+    split_name: str,
+    split_indices: np.ndarray,
+    targets_raw: np.ndarray,
+    chunk_size: int,
+) -> dict[str, dict[str, float | int]]:
+    print(f"Evaluating split: {split_name} ({len(split_indices)} target timestamps)")
+    return {
+        baseline_name: compute_metrics_for_baseline(
+            baseline_name,
+            targets_raw,
+            split_indices,
+            chunk_size,
+        )
+        for baseline_name in BASELINES
+    }
+
+
+def save_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_csv(path: Path, results: dict[str, dict[str, dict[str, float | int]]]) -> None:
+    rows = []
+    for split_name, split_results in results.items():
+        for baseline_name, metrics in split_results.items():
+            rows.append(
+                {
+                    "split": split_name,
+                    "baseline": baseline_name,
+                    **metrics,
+                }
+            )
+    fieldnames = [
+        "split",
+        "baseline",
+        "total_mae",
+        "total_rmse",
+        "rental_mae",
+        "rental_rmse",
+        "return_mae",
+        "return_rmse",
+        "evaluated_timestamps",
+        "skipped_timestamps",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def format_metric(value: float | int | None) -> str:
+    if value is None:
+        return "NA"
+    if isinstance(value, int):
+        return str(value)
+    return f"{value:.4f}"
+
+
+def print_results_table(results: dict[str, dict[str, dict[str, float | int]]]) -> None:
+    headers = [
+        "split",
+        "baseline",
+        "total_mae",
+        "total_rmse",
+        "rental_mae",
+        "rental_rmse",
+        "return_mae",
+        "return_rmse",
+        "eval_T",
+        "skip_T",
+    ]
+    rows = []
+    for split_name, split_results in results.items():
+        for baseline_name, metrics in split_results.items():
+            rows.append(
+                [
+                    split_name,
+                    baseline_name,
+                    format_metric(metrics["total_mae"]),
+                    format_metric(metrics["total_rmse"]),
+                    format_metric(metrics["rental_mae"]),
+                    format_metric(metrics["rental_rmse"]),
+                    format_metric(metrics["return_mae"]),
+                    format_metric(metrics["return_rmse"]),
+                    format_metric(metrics["evaluated_timestamps"]),
+                    format_metric(metrics["skipped_timestamps"]),
+                ]
+            )
+
+    widths = [
+        max(len(str(row[col_idx])) for row in [headers] + rows)
+        for col_idx in range(len(headers))
+    ]
+    print()
+    print("Naive baseline metrics")
+    print("-" * (sum(widths) + 3 * (len(widths) - 1)))
+    print(" | ".join(str(value).ljust(widths[idx]) for idx, value in enumerate(headers)))
+    print("-" * (sum(widths) + 3 * (len(widths) - 1)))
+    for row in rows:
+        print(" | ".join(str(value).ljust(widths[idx]) for idx, value in enumerate(row)))
+    print()
+
+
+def main() -> None:
+    args = parse_args()
+    targets_path = args.data_dir / "targets_raw.npy"
+    timestamps_path = args.data_dir / "timestamps.npy"
+    splits_path = args.data_dir / "splits.json"
+
+    missing = [path for path in (targets_path, timestamps_path, splits_path) if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing required files: {[str(path) for path in missing]}")
+
+    targets_raw = np.load(targets_path, mmap_mode="r")
+    _timestamps = np.load(timestamps_path, mmap_mode="r")
+    split_indices = load_split_indices(args.data_dir)
+
+    if targets_raw.ndim != 3 or targets_raw.shape[2] != 2:
+        raise ValueError(f"Expected targets_raw shape (T, S, 2), got {targets_raw.shape}")
+
+    results = {}
+    for split_name in args.splits:
+        if split_name not in split_indices:
+            raise ValueError(f"Unknown split '{split_name}'. Available: {sorted(split_indices)}")
+        results[split_name] = evaluate_split(
+            split_name,
+            split_indices[split_name],
+            targets_raw,
+            args.chunk_size,
+        )
+
+    print_results_table(results)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    save_json(args.output_dir / "naive_baseline_metrics.json", results)
+    save_csv(args.output_dir / "naive_baseline_metrics.csv", results)
+    print(f"Saved JSON metrics to {args.output_dir / 'naive_baseline_metrics.json'}")
+    print(f"Saved CSV metrics to {args.output_dir / 'naive_baseline_metrics.csv'}")
+
+
+if __name__ == "__main__":
+    main()
