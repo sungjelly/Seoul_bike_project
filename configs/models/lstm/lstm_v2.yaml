@@ -8,7 +8,7 @@ project:
     - smooth_l1
     - next_30min
     - sparse_window
-  notes: Baseline station-level LSTM with sparse long-lookback window offsets.
+  notes: Baseline station-level LSTM with 24-step long-lookback window offsets.
 
 paths:
   data_dir: data/lstm_processed/lstm_v2
@@ -17,7 +17,7 @@ paths:
   log_dir: logs/lstm_v2
 
 data:
-  sequence_length: 10
+  sequence_length: 24
   horizon: 1
   input_dim: 17
   static_numeric_dim: 4

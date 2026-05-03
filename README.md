@@ -7,7 +7,7 @@ The main model is a baseline LSTM that predicts next-window station demand for r
 ## Project Structure
 
 ```text
-configs/        Model and training configuration files
+configs/        Data and model/training configuration files
 data/           Raw, preprocessed, and model-ready data outputs
 notebooks/      Colab notebooks for training and evaluation
 src/            Source code for preprocessing, datasets, models, and training
@@ -38,7 +38,7 @@ Existing shared station files are reused unless you pass `--rebuild-station`.
 Build LSTM-ready arrays from the preprocessed panels:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v1_dataset.yaml
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v1_dataset.yaml
 ```
 
 The dataset config defines the source panels, split date ranges, target columns,
@@ -55,7 +55,7 @@ create `data/lstm_processed/base`, then build window-only variants such as
 `lstm_v2`:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v2_dataset.yaml
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v2_dataset.yaml
 ```
 
 `lstm_v2` reuses `base` and writes only version-specific window offsets,
@@ -67,14 +67,14 @@ Train the baseline LSTM with the default config:
 
 ```bash
 python src/training/lstm_training/train_lstm.py \
-  --config configs/lstm_v1.yaml \
+  --config configs/models/lstm/lstm_v1.yaml \
   --data_dir data/lstm_processed/lstm_v1
 ```
 
 For the sparse-window `lstm_v2` dataset:
 
 ```bash
-python src/training/lstm_training/train_lstm.py --config configs/lstm_v2.yaml
+python src/training/lstm_training/train_lstm.py --config configs/models/lstm/lstm_v2.yaml
 ```
 
 The config controls data paths, model size, batch size, checkpointing, W&B logging, and evaluation settings.

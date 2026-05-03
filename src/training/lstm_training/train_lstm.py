@@ -40,7 +40,7 @@ from src.training.lstm_training.utils import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the Seoul bike LSTM.")
-    parser.add_argument("--config", type=Path, default=Path("configs/lstm_v1.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("configs/models/lstm/lstm_v1.yaml"))
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default=None)
     parser.add_argument("--model_dir", type=str, default=None)

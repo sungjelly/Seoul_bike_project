@@ -114,7 +114,7 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build compact LSTM tensors from preprocessed panels.")
-    parser.add_argument("--config", type=Path, default=Path("configs/lstm_v1_dataset.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("configs/data/lstm/lstm_v1_dataset.yaml"))
     parser.add_argument("--preprocessed-root", type=Path)
     parser.add_argument("--station-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)

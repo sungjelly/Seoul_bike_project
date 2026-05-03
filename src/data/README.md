@@ -63,7 +63,7 @@ python src/data/preprocess/preprocess_data.py \
 Then build the LSTM baseline dataset:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v1_dataset.yaml
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v1_dataset.yaml
 ```
 
 The v1 config builds shared base arrays in `data/lstm_processed/base` and
@@ -80,10 +80,10 @@ base arrays should be reused.
 Build `lstm_v2` after `lstm_v1` when you only want to change the LSTM window:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v2_dataset.yaml
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v2_dataset.yaml
 ```
 
-`configs/lstm_v2_dataset.yaml` sets `reuse_base_arrays: true`, so it reads the
+`configs/data/lstm/lstm_v2_dataset.yaml` sets `reuse_base_arrays: true`, so it reads the
 large arrays from `data/lstm_processed/base` and writes only
 `lstm_v2`-specific sample indexes, window offsets, and metadata.
 
@@ -91,7 +91,7 @@ CLI overrides are available for path-level changes:
 
 ```bash
 python src/data/lstm_baseline/make_lstm_dataset.py \
-  --config configs/lstm_v1_dataset.yaml \
+  --config configs/data/lstm/lstm_v1_dataset.yaml \
   --output-dir data/lstm_processed \
   --dataset-name lstm_v1
 ```
