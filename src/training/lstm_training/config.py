@@ -43,6 +43,7 @@ def apply_cli_overrides(config: dict[str, Any], args) -> dict[str, Any]:
             set_by_path(updated, path, value)
 
     if args.resume is not None:
+        updated["resume"]["enabled"] = True
         updated["resume"]["checkpoint_path"] = "auto" if args.resume == "auto" else args.resume
         updated["resume"]["mode"] = args.resume_mode or "auto"
     elif args.resume_mode is not None:

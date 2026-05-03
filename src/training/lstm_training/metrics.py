@@ -14,6 +14,12 @@ def load_target_scalers(data_dir: str | Path) -> dict:
     scalers_path = Path(data_dir) / "scalers.json"
     with scalers_path.open("r", encoding="utf-8") as f:
         scalers = json.load(f)
+    if "count_scaler" in scalers:
+        count_scaler = scalers["count_scaler"]
+        return {
+            "rental_count": count_scaler,
+            "return_count": count_scaler,
+        }
     return scalers["target"]
 
 
