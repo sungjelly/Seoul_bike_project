@@ -156,7 +156,7 @@ def resolve_base_dir(config: dict[str, Any], output_dir: Path) -> Path:
 
 
 def relative_path(from_dir: Path, to_path: Path) -> str:
-    return os.path.relpath(to_path.resolve(), start=from_dir.resolve())
+    return os.path.relpath(to_path.resolve(), start=from_dir.resolve()).replace("\\", "/")
 
 
 def load_json_required(path: Path) -> dict[str, Any]:

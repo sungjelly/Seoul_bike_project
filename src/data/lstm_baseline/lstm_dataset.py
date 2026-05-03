@@ -24,7 +24,7 @@ def resolve_array_dir(data_dir: Path) -> Path:
             metadata = json.load(f)
         base_data_dir = metadata.get("base_data_dir")
         if base_data_dir:
-            path = Path(base_data_dir)
+            path = Path(str(base_data_dir).replace("\\", "/"))
             if not path.is_absolute():
                 path = data_dir / path
             return path.resolve()

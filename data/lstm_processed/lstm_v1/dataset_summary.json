@@ -1,7 +1,7 @@
 {
   "dataset_name": "lstm_v1",
   "base_dataset_name": "base",
-  "base_data_dir": "..\\base",
+  "base_data_dir": "../base",
   "sources": [
     {
       "name": "2024_april_june",
