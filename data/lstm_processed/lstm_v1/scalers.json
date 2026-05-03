@@ -1,0 +1,70 @@
+{
+  "fit": {
+    "train_split_name": "train",
+    "train_target_timestamp_count": 13096,
+    "train_input_timestamp_count": 13103
+  },
+  "count_scaler": {
+    "columns": [
+      "rental_count",
+      "return_count"
+    ],
+    "transform": "log1p",
+    "mean": 0.3695479778955951,
+    "std": 0.5621124311716289
+  },
+  "net_demand_scaler": {
+    "transform": "signed_log1p",
+    "mean": 0.0012098829181199499,
+    "std": 0.6553514080213739
+  },
+  "dynamic_continuous": {
+    "avg_duration_min": {
+      "transform": "none",
+      "mean": 7.442244375559051,
+      "std": 17.007856114185703
+    },
+    "avg_distance_m": {
+      "transform": "none",
+      "mean": 825.683298070768,
+      "std": 1853.6675858315336
+    },
+    "temperature": {
+      "transform": "none",
+      "mean": 15.60212109439029,
+      "std": 11.666654442694687
+    },
+    "wind_speed": {
+      "transform": "none",
+      "mean": 1.6367469576536349,
+      "std": 0.733752881762152
+    },
+    "rainfall": {
+      "transform": "none",
+      "mean": 0.17807281904288177,
+      "std": 1.1079243642080936
+    },
+    "humidity": {
+      "transform": "none",
+      "mean": 64.42013242195046,
+      "std": 19.542039321096368
+    }
+  },
+  "static_numeric": {
+    "latitude": {
+      "transform": "none",
+      "mean": 37.54771815506475,
+      "std": 0.052334668756053
+    },
+    "longitude": {
+      "transform": "none",
+      "mean": 126.99193882011151,
+      "std": 0.09294714529140956
+    },
+    "dock_count_raw": {
+      "transform": "none",
+      "mean": 12.054676258992806,
+      "std": 5.512891667308503
+    }
+  }
+}
