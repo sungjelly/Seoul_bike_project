@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,7 +114,7 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build compact LSTM tensors from preprocessed panels.")
-    parser.add_argument("--config", type=Path, default=Path("configs/lstm_dataset.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("configs/lstm_v1_dataset.yaml"))
     parser.add_argument("--preprocessed-root", type=Path)
     parser.add_argument("--station-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
@@ -141,6 +142,58 @@ def resolve_output_dir(config: dict[str, Any]) -> Path:
         output_dir = output_dir / str(dataset_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
+
+def resolve_base_dir(config: dict[str, Any], output_dir: Path) -> Path:
+    base_dataset_name = config.get("base_dataset_name")
+    if not base_dataset_name:
+        return output_dir
+    base_root = Path(config.get("base_output_dir", config.get("output_dir", "data/lstm_processed")))
+    if base_root.name != str(base_dataset_name):
+        base_root = base_root / str(base_dataset_name)
+    base_root.mkdir(parents=True, exist_ok=True)
+    return base_root
+
+
+def relative_path(from_dir: Path, to_path: Path) -> str:
+    return os.path.relpath(to_path.resolve(), start=from_dir.resolve())
+
+
+def load_json_required(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"Missing required metadata file: {path}")
+    return read_json(path)
+
+
+def load_base_arrays(base_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return (
+        np.load(base_dir / "dynamic_features.npy", mmap_mode="r"),
+        np.load(base_dir / "targets.npy", mmap_mode="r"),
+        np.load(base_dir / "targets_raw.npy", mmap_mode="r"),
+    )
+
+
+def load_base_static_outputs(
+    base_dir: Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, int], dict[str, int], dict[str, int], dict[str, Any]]:
+    static_numeric = np.load(base_dir / "static_numeric.npy", mmap_mode="r")
+    district_ids = np.load(base_dir / "district_ids.npy", mmap_mode="r")
+    operation_type_ids = np.load(base_dir / "operation_type_ids.npy", mmap_mode="r")
+    station_numbers = np.load(base_dir / "station_numbers.npy", mmap_mode="r")
+    station_index_map = load_json_required(base_dir / "station_index_map.json")
+    district_vocab = load_json_required(base_dir / "district_vocab.json")
+    operation_type_vocab = load_json_required(base_dir / "operation_type_vocab.json")
+    scalers = load_json_required(base_dir / "scalers.json")
+    return (
+        static_numeric,
+        district_ids,
+        operation_type_ids,
+        station_numbers,
+        station_index_map,
+        district_vocab,
+        operation_type_vocab,
+        scalers,
+    )
 
 
 def resolve_sources(config: dict[str, Any]) -> list[SourceSpec]:
@@ -566,6 +619,33 @@ def build_sample_indices(
     return split_arrays, split_meta
 
 
+def build_scaler_fit_times(
+    config: dict[str, Any],
+    boundaries: dict[str, SourceBoundary],
+    timestamps_all: np.ndarray,
+    train_split_name: str,
+) -> np.ndarray:
+    split_config = config.get("splits", {})
+    ranges = split_config.get(train_split_name)
+    if not isinstance(ranges, list) or not ranges:
+        raise ValueError(f"train_split_name={train_split_name!r} is not in splits.")
+
+    pieces = []
+    for item in ranges:
+        source_name = str(item["source"])
+        if source_name not in boundaries:
+            raise ValueError(f"Train split references unknown source: {source_name}")
+        boundary = boundaries[source_name]
+        ts = pd.DatetimeIndex(timestamps_all[boundary.start_idx : boundary.end_idx + 1])
+        start_ts = parse_start(str(item["start"]))
+        end_exclusive = parse_end_exclusive(str(item["end"]))
+        local_indices = np.where((ts >= start_ts) & (ts < end_exclusive))[0]
+        if len(local_indices) == 0:
+            raise ValueError(f"Train scaler range selected no timestamps for source {source_name}.")
+        pieces.append(local_indices.astype(np.int64) + boundary.start_idx)
+    return np.unique(np.concatenate(pieces).astype(np.int64))
+
+
 def streaming_mean_std(
     arrays: list[tuple[np.ndarray, list[int] | np.ndarray, int]],
     transform: str,
@@ -596,31 +676,28 @@ def streaming_mean_std(
 def fit_scalers(
     dynamic: np.ndarray,
     targets_raw: np.ndarray,
-    split_arrays: dict[str, np.ndarray],
     station_metadata: pd.DataFrame,
     target_columns: list[str],
-    window_offsets: np.ndarray,
+    train_fit_times: np.ndarray,
     train_split_name: str,
 ) -> dict[str, Any]:
-    if train_split_name not in split_arrays:
-        raise ValueError(f"train_split_name={train_split_name!r} is not in splits.")
-    train_pairs = split_arrays[train_split_name]
-    train_target_times = np.unique(train_pairs[:, 0].astype(np.int64))
-    train_input_times = np.unique(train_target_times[:, None] + window_offsets.astype(np.int64)[None, :])
+    train_times = np.asarray(train_fit_times, dtype=np.int64)
+    if len(train_times) == 0:
+        raise ValueError("Cannot fit scalers on zero training timestamps.")
 
     count_fit_arrays: list[tuple[np.ndarray, np.ndarray, int]] = []
     for column in COUNT_COLUMNS:
-        count_fit_arrays.append((dynamic, train_input_times, DYNAMIC_FEATURE_COLUMNS.index(column)))
+        count_fit_arrays.append((dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index(column)))
     for column in target_columns:
         if column in COUNT_COLUMNS:
-            count_fit_arrays.append((targets_raw, train_target_times, target_columns.index(column)))
+            count_fit_arrays.append((targets_raw, train_times, target_columns.index(column)))
     count_mean, count_std = streaming_mean_std(count_fit_arrays, "log1p")
 
     scalers: dict[str, Any] = {
         "fit": {
             "train_split_name": train_split_name,
-            "train_target_timestamp_count": int(len(train_target_times)),
-            "train_input_timestamp_count": int(len(train_input_times)),
+            "train_timestamp_count": int(len(train_times)),
+            "fit_scope": "train_split_date_ranges",
         },
         "count_scaler": {
             "columns": COUNT_COLUMNS,
@@ -634,14 +711,14 @@ def fit_scalers(
     }
 
     net_mean, net_std = streaming_mean_std(
-        [(dynamic, train_input_times, DYNAMIC_FEATURE_COLUMNS.index("net_demand"))],
+        [(dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index("net_demand"))],
         "signed_log1p",
     )
     scalers["net_demand_scaler"] = {"transform": "signed_log1p", "mean": net_mean, "std": net_std}
 
     for column in CONTINUOUS_DYNAMIC_COLUMNS:
         mean, std = streaming_mean_std(
-            [(dynamic, train_input_times, DYNAMIC_FEATURE_COLUMNS.index(column))],
+            [(dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index(column))],
             "none",
         )
         scalers["dynamic_continuous"][column] = {"transform": "none", "mean": mean, "std": std}
@@ -778,7 +855,7 @@ def validate_sample_indices(
 
 
 def validate_outputs(
-    output_dir: Path,
+    array_dir: Path,
     dynamic: np.ndarray,
     targets: np.ndarray,
     targets_raw: np.ndarray,
@@ -813,7 +890,7 @@ def validate_outputs(
         ("targets_raw.npy", np.float32),
         ("static_numeric.npy", np.float32),
     ]:
-        arr = np.load(output_dir / filename, mmap_mode="r")
+        arr = np.load(array_dir / filename, mmap_mode="r")
         if arr.dtype != dtype:
             raise ValueError(f"{filename} must be {dtype}, got {arr.dtype}")
     return missing
@@ -841,6 +918,8 @@ def boundary_json(boundaries: dict[str, SourceBoundary]) -> dict[str, dict[str, 
 
 def save_metadata(
     output_dir: Path,
+    base_dir: Path,
+    update_base_metadata: bool,
     config: dict[str, Any],
     sources: list[SourceSpec],
     boundaries: dict[str, SourceBoundary],
@@ -857,12 +936,20 @@ def save_metadata(
     missing_summary: dict[str, int],
 ) -> None:
     source_boundaries = boundary_json(boundaries)
+    base_data_dir = relative_path(output_dir, base_dir)
+    write_json(output_dir / "base_data.json", {"base_data_dir": base_data_dir})
     write_json(output_dir / "source_boundaries.json", source_boundaries)
     write_json(output_dir / "station_index_map.json", station_index_map)
     write_json(output_dir / "district_vocab.json", district_vocab)
     write_json(output_dir / "operation_type_vocab.json", operation_type_vocab)
     write_json(output_dir / "scalers.json", scalers)
     write_json(output_dir / "splits.json", split_meta)
+    if update_base_metadata and base_dir != output_dir:
+        write_json(base_dir / "source_boundaries.json", source_boundaries)
+        write_json(base_dir / "station_index_map.json", station_index_map)
+        write_json(base_dir / "district_vocab.json", district_vocab)
+        write_json(base_dir / "operation_type_vocab.json", operation_type_vocab)
+        write_json(base_dir / "scalers.json", scalers)
 
     feature_config = {
         "horizon": int(config.get("horizon", 1)),
@@ -884,6 +971,8 @@ def save_metadata(
     output_files = sorted(path.name for path in output_dir.iterdir() if path.is_file())
     summary = {
         "dataset_name": config.get("dataset_name", output_dir.name),
+        "base_dataset_name": config.get("base_dataset_name", base_dir.name),
+        "base_data_dir": base_data_dir,
         "sources": [{"name": source.name, "path": str(source.path)} for source in sources],
         "source_boundaries": source_boundaries,
         "source_reports": source_reports,
@@ -902,6 +991,13 @@ def save_metadata(
         "generated_output_files": output_files,
     }
     write_json(output_dir / "dataset_summary.json", summary)
+    if update_base_metadata and base_dir != output_dir:
+        base_summary = dict(summary)
+        base_summary["dataset_name"] = config.get("base_dataset_name", base_dir.name)
+        base_summary["base_dataset_name"] = config.get("base_dataset_name", base_dir.name)
+        base_summary["base_data_dir"] = "."
+        base_summary["generated_output_files"] = sorted(path.name for path in base_dir.iterdir() if path.is_file())
+        write_json(base_dir / "dataset_summary.json", base_summary)
 
 
 def main() -> None:
@@ -910,6 +1006,8 @@ def main() -> None:
     config = apply_cli_overrides(load_config(args.config), args)
 
     output_dir = resolve_output_dir(config)
+    base_dir = resolve_base_dir(config, output_dir)
+    reuse_base_arrays = bool(config.get("reuse_base_arrays", False))
     station_dir = Path(config.get("station_dir", "data/preprocessed/station"))
     sources = resolve_sources(config)
     horizon = int(config.get("horizon", 1))
@@ -917,23 +1015,58 @@ def main() -> None:
     if target_columns != TARGET_COLUMNS_DEFAULT:
         raise ValueError("This baseline builder currently supports target_columns: rental_count, return_count.")
 
-    station_metadata, station_numbers = load_station_inputs(station_dir)
     window_offsets = build_window_offsets(config.get("window", {}))
     validate_window_offsets(window_offsets, horizon)
     np.save(output_dir / "window_offsets.npy", window_offsets.astype(np.int32))
 
-    boundaries, timestamps_all = build_source_boundaries(sources)
-    np.save(output_dir / "timestamps.npy", timestamps_all)
+    if reuse_base_arrays:
+        if base_dir == output_dir:
+            raise ValueError("reuse_base_arrays=true requires base_dataset_name or base_output_dir to point outside output_dir.")
+        source_boundaries_json = load_json_required(base_dir / "source_boundaries.json")
+        boundaries = {
+            name: SourceBoundary(
+                name=name,
+                start_idx=int(item["start_idx"]),
+                end_idx=int(item["end_idx"]),
+                start_timestamp=str(item["start_timestamp"]),
+                end_timestamp=str(item["end_timestamp"]),
+            )
+            for name, item in source_boundaries_json.items()
+        }
+        timestamps_all = np.load(base_dir / "timestamps.npy", mmap_mode="r")
+        dynamic, targets, targets_raw = load_base_arrays(base_dir)
+        (
+            static_numeric,
+            district_ids,
+            operation_type_ids,
+            station_numbers,
+            station_index_map,
+            district_vocab,
+            operation_type_vocab,
+            scalers,
+        ) = load_base_static_outputs(base_dir)
+        source_reports = load_json_required(base_dir / "dataset_summary.json").get("source_reports", {})
+        logging.info("Reusing base LSTM arrays from %s", base_dir)
+    else:
+        station_metadata, station_numbers = load_station_inputs(station_dir)
+        boundaries, timestamps_all = build_source_boundaries(sources)
+        np.save(base_dir / "timestamps.npy", timestamps_all)
 
-    logging.info("Building tensors: T=%s, S=%s, F=%s", len(timestamps_all), len(station_numbers), len(DYNAMIC_FEATURE_COLUMNS))
-    dynamic, targets, targets_raw, source_reports = build_dynamic_and_targets(
-        output_dir,
-        sources,
-        boundaries,
-        timestamps_all,
-        station_numbers,
-        target_columns,
-    )
+        logging.info(
+            "Building tensors: T=%s, S=%s, F=%s into %s",
+            len(timestamps_all),
+            len(station_numbers),
+            len(DYNAMIC_FEATURE_COLUMNS),
+            base_dir,
+        )
+        dynamic, targets, targets_raw, source_reports = build_dynamic_and_targets(
+            base_dir,
+            sources,
+            boundaries,
+            timestamps_all,
+            station_numbers,
+            target_columns,
+        )
 
     split_arrays, split_meta = build_sample_indices(
         output_dir,
@@ -944,37 +1077,45 @@ def main() -> None:
         window_offsets,
     )
 
-    train_split_name = str(config.get("train_split_name", "train"))
-    scalers = fit_scalers(
-        dynamic,
-        targets_raw,
-        split_arrays,
-        station_metadata,
-        target_columns,
-        window_offsets,
-        train_split_name,
-    )
-    apply_scaling(
-        dynamic,
-        targets,
-        targets_raw,
-        scalers,
-        target_columns,
-        chunk_size=int(config.get("scaling_chunk_size", 512)),
-    )
+    if not reuse_base_arrays:
+        train_split_name = str(config.get("train_split_name", "train"))
+        train_fit_times = build_scaler_fit_times(config, boundaries, timestamps_all, train_split_name)
+        scalers = fit_scalers(
+            dynamic,
+            targets_raw,
+            station_metadata,
+            target_columns,
+            train_fit_times,
+            train_split_name,
+        )
+        apply_scaling(
+            dynamic,
+            targets,
+            targets_raw,
+            scalers,
+            target_columns,
+            chunk_size=int(config.get("scaling_chunk_size", 512)),
+        )
 
-    static_numeric, district_ids, operation_type_ids, station_index_map, district_vocab, operation_type_vocab = build_static_outputs(
-        output_dir,
-        station_metadata,
-        station_numbers,
-        scalers,
-    )
+        (
+            static_numeric,
+            district_ids,
+            operation_type_ids,
+            station_index_map,
+            district_vocab,
+            operation_type_vocab,
+        ) = build_static_outputs(
+            base_dir,
+            station_metadata,
+            station_numbers,
+            scalers,
+        )
     missing_summary = validate_outputs(
-        output_dir,
+        base_dir,
         dynamic,
         targets,
         targets_raw,
-        np.load(output_dir / "station_numbers.npy"),
+        np.load(base_dir / "station_numbers.npy"),
         station_numbers,
         split_arrays,
         boundaries,
@@ -988,6 +1129,8 @@ def main() -> None:
 
     save_metadata(
         output_dir,
+        base_dir,
+        not reuse_base_arrays,
         config,
         sources,
         boundaries,

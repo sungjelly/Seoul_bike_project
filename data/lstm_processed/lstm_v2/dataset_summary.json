@@ -1,5 +1,5 @@
 {
-  "dataset_name": "lstm_v1",
+  "dataset_name": "lstm_v2",
   "base_dataset_name": "base",
   "base_data_dir": "..\\base",
   "sources": [
@@ -71,19 +71,19 @@
   "S": 2780,
   "dynamic_feature_dim": 17,
   "target_dim": 2,
-  "window_size": 8,
+  "window_size": 24,
   "horizon": 1,
   "samples_per_split": {
-    "train": 36406880,
+    "train": 36362400,
     "val": 4136640,
     "test_2025_winter": 8139840,
-    "test_2024_april_june": 12120800
+    "test_2024_april_june": 12076320
   },
   "valid_target_timestamps_per_split": {
-    "train": 13096,
+    "train": 13080,
     "val": 1488,
     "test_2025_winter": 2928,
-    "test_2024_april_june": 4360
+    "test_2024_april_june": 4344
   },
   "split_ranges": {
     "train": [
@@ -91,8 +91,8 @@
         "source": "2025",
         "start": "2025-01-01",
         "end": "2025-09-30",
-        "valid_target_timestamp_count": 13096,
-        "sample_count": 36406880
+        "valid_target_timestamp_count": 13080,
+        "sample_count": 36362400
       }
     ],
     "val": [
@@ -118,8 +118,8 @@
         "source": "2024_april_june",
         "start": "2024-04-01",
         "end": "2024-06-30",
-        "valid_target_timestamp_count": 4360,
-        "sample_count": 12120800
+        "valid_target_timestamp_count": 4344,
+        "sample_count": 12076320
       }
     ]
   },
@@ -130,12 +130,8 @@
   },
   "generated_output_files": [
     "base_data.json",
-    "dataset_summary.json",
-    "district_ids.npy",
     "district_vocab.json",
-    "dynamic_features.npy",
     "feature_config.json",
-    "operation_type_ids.npy",
     "operation_type_vocab.json",
     "sample_index_test_2024_april_june.npy",
     "sample_index_test_2025_winter.npy",
@@ -144,12 +140,7 @@
     "scalers.json",
     "source_boundaries.json",
     "splits.json",
-    "static_numeric.npy",
     "station_index_map.json",
-    "station_numbers.npy",
-    "targets.npy",
-    "targets_raw.npy",
-    "timestamps.npy",
     "window_offsets.npy"
   ]
 }

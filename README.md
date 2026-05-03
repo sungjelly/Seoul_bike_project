@@ -35,20 +35,46 @@ This writes shared station files under `data/preprocessed/station` and
 date-specific weather/panel files under `data/preprocessed/2025` by default.
 Existing shared station files are reused unless you pass `--rebuild-station`.
 
-Build LSTM-ready arrays from the preprocessed panel:
+Build LSTM-ready arrays from the preprocessed panels:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v1_dataset.yaml
 ```
 
-This writes model-ready arrays and split metadata under `data/lstm_baseline`.
+The dataset config defines the source panels, split date ranges, target columns,
+window offsets, and output name. By default it combines:
+
+- `data/preprocessed/2025`
+- `data/preprocessed/2024_april_june`
+
+and writes compact model-ready arrays and metadata under
+`data/lstm_processed/lstm_v1`.
+
+Dataset versions can share the large base arrays. Build `lstm_v1` first to
+create `data/lstm_processed/base`, then build window-only variants such as
+`lstm_v2`:
+
+```bash
+python src/data/lstm_baseline/make_lstm_dataset.py --config configs/lstm_v2_dataset.yaml
+```
+
+`lstm_v2` reuses `base` and writes only version-specific window offsets,
+sample indexes, and metadata under `data/lstm_processed/lstm_v2`.
 
 ## Training
 
 Train the baseline LSTM with the default config:
 
 ```bash
-python src/training/lstm_training/train_lstm.py --config configs/lstm_baseline.yaml
+python src/training/lstm_training/train_lstm.py \
+  --config configs/lstm_v1.yaml \
+  --data_dir data/lstm_processed/lstm_v1
+```
+
+For the sparse-window `lstm_v2` dataset:
+
+```bash
+python src/training/lstm_training/train_lstm.py --config configs/lstm_v2.yaml
 ```
 
 The config controls data paths, model size, batch size, checkpointing, W&B logging, and evaluation settings.
@@ -58,7 +84,10 @@ The config controls data paths, model size, batch size, checkpointing, W&B loggi
 Evaluate a trained checkpoint:
 
 ```bash
-python src/training/lstm_training/evaluate.py --checkpoint_path checkpoints/lstm_baseline/best.pt --split test
+python src/training/lstm_training/evaluate.py \
+  --checkpoint_path checkpoints/lstm_v1/best.pt \
+  --data_dir data/lstm_processed/lstm_v1 \
+  --split test_2025_winter
 ```
 
 Run simple raw-count baselines:

@@ -1,7 +1,7 @@
 {
-  "dataset_name": "lstm_v1",
+  "dataset_name": "base",
   "base_dataset_name": "base",
-  "base_data_dir": "..\\base",
+  "base_data_dir": ".",
   "sources": [
     {
       "name": "2024_april_june",
@@ -129,27 +129,18 @@
     "targets_raw_nan_or_inf": 0
   },
   "generated_output_files": [
-    "base_data.json",
-    "dataset_summary.json",
     "district_ids.npy",
     "district_vocab.json",
     "dynamic_features.npy",
-    "feature_config.json",
     "operation_type_ids.npy",
     "operation_type_vocab.json",
-    "sample_index_test_2024_april_june.npy",
-    "sample_index_test_2025_winter.npy",
-    "sample_index_train.npy",
-    "sample_index_val.npy",
     "scalers.json",
     "source_boundaries.json",
-    "splits.json",
     "static_numeric.npy",
     "station_index_map.json",
     "station_numbers.npy",
     "targets.npy",
     "targets_raw.npy",
-    "timestamps.npy",
-    "window_offsets.npy"
+    "timestamps.npy"
   ]
 }

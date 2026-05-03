@@ -1,4 +1,6 @@
-dataset_name: lstm_v1
+dataset_name: lstm_v2
+base_dataset_name: base
+reuse_base_arrays: true
 preprocessed_root: data/preprocessed
 station_dir: data/preprocessed/station
 output_dir: data/lstm_processed
@@ -17,6 +19,22 @@ target_columns:
 window:
   mode: explicit_offsets
   offsets:
+    - -24
+    - -23
+    - -22
+    - -21
+    - -20
+    - -19
+    - -18
+    - -17
+    - -16
+    - -15
+    - -14
+    - -13
+    - -12
+    - -11
+    - -10
+    - -9
     - -8
     - -7
     - -6

@@ -19,7 +19,7 @@ from src.training.lstm_training.utils import bool_from_string, ensure_dirs, sele
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate a Seoul bike LSTM checkpoint.")
-    parser.add_argument("--config", type=Path, default=Path("configs/lstm_baseline.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("configs/lstm_v1.yaml"))
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=Path, required=True)
     parser.add_argument("--log_dir", type=str, default=None)

@@ -1,0 +1,58 @@
+{
+  "train": {
+    "ranges": [
+      {
+        "source": "2025",
+        "start": "2025-01-01",
+        "end": "2025-09-30",
+        "valid_target_timestamp_count": 13080,
+        "sample_count": 36362400
+      }
+    ],
+    "sample_index_file": "sample_index_train.npy",
+    "sample_count": 36362400,
+    "valid_target_timestamp_count": 13080
+  },
+  "val": {
+    "ranges": [
+      {
+        "source": "2025",
+        "start": "2025-10-01",
+        "end": "2025-10-31",
+        "valid_target_timestamp_count": 1488,
+        "sample_count": 4136640
+      }
+    ],
+    "sample_index_file": "sample_index_val.npy",
+    "sample_count": 4136640,
+    "valid_target_timestamp_count": 1488
+  },
+  "test_2025_winter": {
+    "ranges": [
+      {
+        "source": "2025",
+        "start": "2025-11-01",
+        "end": "2025-12-31",
+        "valid_target_timestamp_count": 2928,
+        "sample_count": 8139840
+      }
+    ],
+    "sample_index_file": "sample_index_test_2025_winter.npy",
+    "sample_count": 8139840,
+    "valid_target_timestamp_count": 2928
+  },
+  "test_2024_april_june": {
+    "ranges": [
+      {
+        "source": "2024_april_june",
+        "start": "2024-04-01",
+        "end": "2024-06-30",
+        "valid_target_timestamp_count": 4344,
+        "sample_count": 12076320
+      }
+    ],
+    "sample_index_file": "sample_index_test_2024_april_june.npy",
+    "sample_count": 12076320,
+    "valid_target_timestamp_count": 4344
+  }
+}

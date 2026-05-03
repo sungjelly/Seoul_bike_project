@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from src.data.lstm_baseline.lstm_dataset import resolve_array_dir
+
 
 BASELINES = {
     "zero": {"history": 0},
@@ -20,9 +22,9 @@ BASELINES = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate naive raw-count demand baselines.")
-    parser.add_argument("--data-dir", type=Path, default=Path("data/lstm_baseline"))
+    parser.add_argument("--data-dir", type=Path, default=Path("data/lstm_processed/lstm_v1"))
     parser.add_argument("--output-dir", type=Path, default=Path("logs/naive_baseline"))
-    parser.add_argument("--splits", nargs="+", default=["val", "test"])
+    parser.add_argument("--splits", nargs="+", default=["val", "test_2025_winter", "test_2024_april_june"])
     parser.add_argument("--chunk-size", type=int, default=128)
     return parser.parse_args()
 
@@ -31,11 +33,12 @@ def load_split_indices(data_dir: Path) -> dict[str, np.ndarray]:
     splits_path = data_dir / "splits.json"
     with splits_path.open("r", encoding="utf-8") as f:
         splits = json.load(f)
-    return {
-        "train": np.asarray(splits["train_target_indices"], dtype=np.int64),
-        "val": np.asarray(splits["val_target_indices"], dtype=np.int64),
-        "test": np.asarray(splits["test_target_indices"], dtype=np.int64),
-    }
+    split_indices = {}
+    for split_name, metadata in splits.items():
+        sample_index_file = metadata.get("sample_index_file", f"sample_index_{split_name}.npy")
+        sample_index = np.load(data_dir / sample_index_file, mmap_mode="r")
+        split_indices[split_name] = np.unique(sample_index[:, 0].astype(np.int64))
+    return split_indices
 
 
 def make_predictions(
@@ -266,8 +269,9 @@ def print_results_table(results: dict[str, dict[str, dict[str, float | int]]]) -
 
 def main() -> None:
     args = parse_args()
-    targets_path = args.data_dir / "targets_raw.npy"
-    timestamps_path = args.data_dir / "timestamps.npy"
+    array_dir = resolve_array_dir(args.data_dir)
+    targets_path = array_dir / "targets_raw.npy"
+    timestamps_path = array_dir / "timestamps.npy"
     splits_path = args.data_dir / "splits.json"
 
     missing = [path for path in (targets_path, timestamps_path, splits_path) if not path.exists()]

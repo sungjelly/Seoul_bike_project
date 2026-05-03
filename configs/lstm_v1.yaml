@@ -1,7 +1,7 @@
 project:
   name: Seoul_Bike_Project
   entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
-  run_name: baseline_lstm_v1
+  run_name: lstm_v1
   tags:
     - baseline
     - lstm
@@ -10,10 +10,10 @@ project:
   notes: Baseline station-level LSTM for Seoul bike next-window demand prediction.
 
 paths:
-  data_dir: data/lstm_baseline
-  checkpoint_dir: checkpoints/lstm_baseline
-  model_dir: models/lstm_baseline
-  log_dir: logs/lstm_baseline
+  data_dir: data/lstm_processed/lstm_v1
+  checkpoint_dir: checkpoints/lstm_v1
+  model_dir: models/lstm_v1
+  log_dir: logs/lstm_v1
 
 data:
   sequence_length: 8
@@ -85,8 +85,8 @@ wandb:
   enabled: true
   entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
   project: Seoul_Bike_Project
-  name: baseline_lstm_v1
-  group: lstm_baseline
+  name: lstm_v1
+  group: lstm_v1
   job_type: train
   resume: allow
   run_id: null
