@@ -204,10 +204,8 @@ def smoke_test(
         raise ValueError("Smoke test produced a non-finite loss.")
     if grad_scaler is not None and use_amp:
         grad_scaler.scale(loss).backward()
-        grad_scaler.unscale_(optimizer)
     else:
         loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), float(config["training"]["gradient_clip_norm"]))
     optimizer.zero_grad(set_to_none=True)
     return float(loss.item())
 
