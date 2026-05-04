@@ -15,6 +15,7 @@ if __package__ is None or __package__ == "":
 
 from src.data.lstm_baseline.lstm_dataset import FastLSTMBatchBuilder
 from src.models.baseline_lstm import BaselineLSTM
+from src.models.tts_lstm import TTSLSTM
 from src.training.lstm_training.checkpointing import (
     initial_best,
     is_improvement,
@@ -79,21 +80,54 @@ def load_feature_metadata(data_dir: Path) -> tuple[dict[str, Any], dict[str, Any
     )
 
 
-def build_model(config: dict, data_dir: Path, device: torch.device) -> BaselineLSTM:
+def normalize_architecture_name(value: str) -> str:
+    return value.replace("-", "_").lower()
+
+
+def build_model(config: dict, data_dir: Path, device: torch.device) -> torch.nn.Module:
     summary, feature_config, district_vocab = load_feature_metadata(data_dir)
-    model = BaselineLSTM(
-        input_dim=len(feature_config["dynamic_feature_columns"]),
-        static_numeric_dim=len(feature_config["static_numeric_columns"]),
-        output_dim=len(feature_config["target_columns"]),
-        num_stations=int(summary["S"]),
-        num_districts=len(district_vocab),
-        hidden_dim=int(config["model"]["hidden_dim"]),
-        num_layers=int(config["model"]["num_layers"]),
-        station_embedding_dim=int(config["model"]["station_embedding_dim"]),
-        district_embedding_dim=int(config["model"]["district_embedding_dim"]),
-        mlp_hidden_dim=int(config["model"]["mlp_hidden_dim"]),
-        dropout=float(config["model"]["dropout"]),
-    )
+    model_config = config["model"]
+    architecture = normalize_architecture_name(str(model_config.get("architecture", "baseline_lstm")))
+    common_kwargs = {
+        "input_dim": len(feature_config["dynamic_feature_columns"]),
+        "static_numeric_dim": len(feature_config["static_numeric_columns"]),
+        "output_dim": len(feature_config["target_columns"]),
+        "num_stations": int(summary["S"]),
+        "num_districts": len(district_vocab),
+    }
+    if architecture == "baselinelstm":
+        architecture = "baseline_lstm"
+
+    if architecture == "baseline_lstm":
+        model = BaselineLSTM(
+            **common_kwargs,
+            hidden_dim=int(model_config["hidden_dim"]),
+            num_layers=int(model_config["num_layers"]),
+            station_embedding_dim=int(model_config["station_embedding_dim"]),
+            district_embedding_dim=int(model_config["district_embedding_dim"]),
+            mlp_hidden_dim=int(model_config["mlp_hidden_dim"]),
+            dropout=float(model_config["dropout"]),
+        )
+    elif architecture == "tts_lstm":
+        model = TTSLSTM(
+            **common_kwargs,
+            window_offsets=feature_config["window_offsets"],
+            recent_offsets=model_config["recent_offsets"],
+            daily_offsets=model_config["daily_offsets"],
+            weekly_offsets=model_config["weekly_offsets"],
+            recent_hidden_dim=int(model_config["recent_hidden_dim"]),
+            daily_hidden_dim=int(model_config["daily_hidden_dim"]),
+            weekly_hidden_dim=int(model_config["weekly_hidden_dim"]),
+            recent_num_layers=int(model_config["recent_num_layers"]),
+            daily_num_layers=int(model_config["daily_num_layers"]),
+            weekly_num_layers=int(model_config["weekly_num_layers"]),
+            station_embedding_dim=int(model_config["station_embedding_dim"]),
+            district_embedding_dim=int(model_config["district_embedding_dim"]),
+            mlp_hidden_dims=model_config["mlp_hidden_dims"],
+            dropout=float(model_config["dropout"]),
+        )
+    else:
+        raise ValueError(f"Unsupported model architecture: {model_config.get('architecture')}")
     return model.to(device)
 
 
