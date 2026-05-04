@@ -1,7 +1,7 @@
 project:
   name: Seoul_Bike_Project
   entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
-  run_name: lstm_v1
+  run_name: lstm_v3
   tags:
     - baseline
     - lstm
@@ -11,9 +11,9 @@ project:
 
 paths:
   data_dir: data/lstm_processed/lstm_v1
-  checkpoint_dir: checkpoints/lstm_v1
-  model_dir: models/lstm_v1
-  log_dir: logs/lstm_v1
+  checkpoint_dir: checkpoints/lstm_v3
+  model_dir: models/lstm_v3
+  log_dir: logs/lstm_v3
 
 data:
   sequence_length: 8
@@ -32,7 +32,7 @@ model:
   num_layers: 3
   station_embedding_dim: 16
   district_embedding_dim: 8
-  mlp_hidden_dim: 128
+  mlp_hidden_dim: 256
   dropout: 0.1
 
 training:
