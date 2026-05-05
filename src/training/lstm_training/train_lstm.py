@@ -80,6 +80,14 @@ def load_feature_metadata(data_dir: Path) -> tuple[dict[str, Any], dict[str, Any
     )
 
 
+def uses_operation_type_static(feature_config: dict[str, Any]) -> bool:
+    return "operation_type_id" in feature_config.get("categorical_static_columns", [])
+
+
+def static_numeric_dim(feature_config: dict[str, Any]) -> int:
+    return len(feature_config["static_numeric_columns"]) + int(uses_operation_type_static(feature_config))
+
+
 def normalize_architecture_name(value: str) -> str:
     return value.replace("-", "_").lower()
 
@@ -90,7 +98,7 @@ def build_model(config: dict, data_dir: Path, device: torch.device) -> torch.nn.
     architecture = normalize_architecture_name(str(model_config.get("architecture", "baseline_lstm")))
     common_kwargs = {
         "input_dim": len(feature_config["dynamic_feature_columns"]),
-        "static_numeric_dim": len(feature_config["static_numeric_columns"]),
+        "static_numeric_dim": static_numeric_dim(feature_config),
         "output_dim": len(feature_config["target_columns"]),
         "num_stations": int(summary["S"]),
         "num_districts": len(district_vocab),
@@ -173,9 +181,13 @@ def make_batches(config: dict, split: str, device: torch.device, shuffle: bool, 
 
 
 def forward_batch(model: torch.nn.Module, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    static_numeric = batch["static_numeric"]
+    if "operation_type_id" in batch:
+        operation_type = batch["operation_type_id"].to(dtype=static_numeric.dtype).unsqueeze(1)
+        static_numeric = torch.cat([static_numeric, operation_type], dim=1)
     return model(
         batch["x"],
-        static_numeric=batch["static_numeric"],
+        static_numeric=static_numeric,
         station_index=batch["station_idx"],
         district_id=batch["district_id"],
     )
@@ -325,7 +337,7 @@ def build_metadata(config: dict) -> dict[str, Any]:
         "architecture": config["model"]["architecture"],
         "data_dir": str(data_dir),
         "input_dim": len(feature_config["dynamic_feature_columns"]),
-        "static_numeric_dim": len(feature_config["static_numeric_columns"]),
+        "static_numeric_dim": static_numeric_dim(feature_config),
         "output_dim": len(feature_config["target_columns"]),
         "num_stations": int(summary["S"]),
         "num_districts": len(district_vocab),
