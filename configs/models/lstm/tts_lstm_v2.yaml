@@ -1,0 +1,116 @@
+project:
+  name: Seoul_Bike_Project
+  entity: null
+  run_name: tts_lstm_v2
+  tags:
+    - lstm
+    - tts_lstm
+    - seasonal
+    - tritemporal
+    - tuned
+    - no_resume
+  notes: Tuned Tri-Temporal Seasonal LSTM. Lower LR, moderate batch size, stronger regularization, faster scheduler, clean no-resume training.
+
+paths:
+  data_dir: data/lstm_processed/tts_lstm
+  checkpoint_dir: checkpoints/tts_lstm_v2
+  model_dir: models/tts_lstm_v2
+  log_dir: logs/tts_lstm_v2
+
+data:
+  sequence_length: 33
+  horizon: 1
+  input_dim: 17
+  static_numeric_dim: 3
+  output_dim: 2
+  num_workers: 2
+  pin_memory: true
+  persistent_workers: true
+  mmap_mode: r
+
+model:
+  architecture: tts_lstm
+
+  recent_offsets: [-24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1]
+  daily_offsets: [-336, -288, -240, -192, -144, -96, -48]
+  weekly_offsets: [-1008, -672, -336]
+
+  recent_hidden_dim: 64
+  daily_hidden_dim: 32
+  weekly_hidden_dim: 32
+
+  recent_num_layers: 1
+  daily_num_layers: 1
+  weekly_num_layers: 1
+
+  station_embedding_dim: 16
+  district_embedding_dim: 8
+  mlp_hidden_dims: [128, 64]
+  dropout: 0.2
+
+training:
+  loss: SmoothL1Loss
+  smooth_l1_beta: 1.0
+  optimizer: AdamW
+  learning_rate: 0.0005
+  weight_decay: 0.0003
+  batch_size: 8192
+  max_epochs: 15
+  gradient_clip_norm: 1.0
+  mixed_precision: true
+  seed: 42
+  device: auto
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: min
+  factor: 0.5
+  patience: 1
+  min_lr: 0.000001
+
+early_stopping:
+  enabled: true
+  patience: 3
+  monitor: val_total_mae
+  mode: min
+
+checkpointing:
+  save_every_epoch: false
+  save_best: true
+  save_last: true
+  keep_last_n: 0
+  monitor: val_total_mae
+  mode: min
+  save_optimizer_state: true
+  save_scheduler_state: true
+  save_amp_scaler_state: true
+  save_rng_state: true
+
+resume:
+  enabled: false
+  checkpoint_path: null
+  mode: auto
+  allow_hparam_override: true
+  reset_optimizer: false
+  reset_scheduler: false
+
+wandb:
+  enabled: true
+  entity: null
+  project: Seoul_bike_project
+  name: tts_lstm_v2
+  group: tts_lstm
+  job_type: train
+  resume: allow
+  run_id: null
+  log_model: false
+  watch_model: false
+  log_every_n_steps: 100
+
+validation:
+  eval_every_epoch: true
+  max_val_batches: null
+
+testing:
+  run_test_after_training: true
+  checkpoint: best
