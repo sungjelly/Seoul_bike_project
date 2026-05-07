@@ -295,20 +295,30 @@ def validate_lstm2_feature_schema(config: dict[str, Any]) -> None:
             raise ValueError(f"{excluded} must not appear in lstm2 feature schema.")
 
 
-def validate_window_offsets(offsets: np.ndarray, horizon: int) -> None:
+def validate_window_offsets(
+    offsets: np.ndarray,
+    horizon: int,
+    prediction_mode: str = "direct_multi_horizon",
+) -> None:
     if horizon <= 0:
         raise ValueError(f"horizon must be positive, got {horizon}")
-    if np.max(offsets) > -horizon:
-        raise ValueError(
-            f"max(window_offsets)={int(np.max(offsets))} violates horizon={horizon}. "
-            f"The latest allowed input offset is {-horizon}."
-        )
     if np.any(offsets >= 0):
         raise ValueError("All window offsets must be negative.")
+    if prediction_mode == "direct_multi_horizon":
+        # Direct 8-horizon prediction must not see observations inside the horizon window.
+        max_allowed_offset = -horizon
+    elif prediction_mode == "one_step_autoregressive":
+        # One-step v2 predicts target time t, so the latest valid history input is t - 1.
+        max_allowed_offset = -1
+    else:
+        raise ValueError(f"Unknown prediction_mode: {prediction_mode}")
+    if int(np.max(offsets)) > max_allowed_offset:
+        raise ValueError(
+            f"max(window_offsets)={int(np.max(offsets))} violates horizon={horizon}. "
+            f"The latest allowed input offset for prediction_mode={prediction_mode!r} is {max_allowed_offset}."
+        )
     if horizon != LSTM2_HORIZON:
         raise ValueError(f"lstm2 horizon must be {LSTM2_HORIZON}, got {horizon}.")
-    if int(np.max(offsets)) > -LSTM2_HORIZON:
-        raise ValueError("lstm2 input windows must end at or before t - 8.")
 
 
 def source_timestamps(source: SourceSpec) -> np.ndarray:
@@ -914,6 +924,7 @@ def validate_outputs(
     boundaries: dict[str, SourceBoundary],
     window_offsets: np.ndarray,
     horizon: int,
+    prediction_mode: str = "direct_multi_horizon",
 ) -> dict[str, int]:
     T, S, F = dynamic.shape
     if F != len(DYNAMIC_SEQUENCE_COLUMNS):
@@ -928,7 +939,7 @@ def validate_outputs(
         raise ValueError("targets_raw.npy must match targets.npy shape (T, S, 8, 2).")
     if not np.array_equal(station_numbers, shared_station_numbers):
         raise ValueError("Saved station_numbers do not match shared station order.")
-    validate_window_offsets(window_offsets, horizon)
+    validate_window_offsets(window_offsets, horizon, prediction_mode)
     validate_sample_indices(split_arrays, boundaries, T, S, window_offsets, horizon)
 
     feature_lists = [DYNAMIC_SEQUENCE_COLUMNS, TARGET_TIME_FEATURE_COLUMNS]
@@ -1015,6 +1026,7 @@ def save_metadata(
 
     feature_config = {
         "horizon": int(config.get("horizon", LSTM2_HORIZON)),
+        "prediction_mode": str(config.get("prediction_mode", "direct_multi_horizon")),
         "window_offsets": window_offsets.astype(int).tolist(),
         "recent_offsets": [int(value) for value in config["window"]["recent_offsets"]],
         "daily_offsets": [int(value) for value in config["window"]["daily_offsets"]],
@@ -1039,6 +1051,7 @@ def save_metadata(
         "dataset_name": config.get("dataset_name", output_dir.name),
         "base_dataset_name": config.get("base_dataset_name", base_dir.name),
         "base_data_dir": base_data_dir,
+        "prediction_mode": str(config.get("prediction_mode", "direct_multi_horizon")),
         "sources": [{"name": source.name, "path": str(source.path)} for source in sources],
         "source_boundaries": source_boundaries,
         "source_reports": source_reports,
@@ -1080,13 +1093,14 @@ def main() -> None:
     horizon = int(config.get("horizon", 1))
     if horizon != LSTM2_HORIZON:
         raise ValueError(f"tts_lstm2 requires horizon={LSTM2_HORIZON}, got {horizon}.")
+    prediction_mode = str(config.get("prediction_mode", "direct_multi_horizon"))
     validate_lstm2_feature_schema(config)
     target_columns = [str(x) for x in config.get("target_columns", TARGET_COLUMNS_DEFAULT)]
     if target_columns != TARGET_COLUMNS_DEFAULT:
         raise ValueError("This baseline builder currently supports target_columns: rental_count, return_count.")
 
     window_offsets = build_lstm2_window_offsets(config)
-    validate_window_offsets(window_offsets, horizon)
+    validate_window_offsets(window_offsets, horizon, prediction_mode)
     np.save(output_dir / "window_offsets.npy", window_offsets.astype(np.int32))
 
     if reuse_base_arrays:
@@ -1192,6 +1206,7 @@ def main() -> None:
         boundaries,
         window_offsets,
         horizon,
+        prediction_mode,
     )
     if not np.isfinite(static_numeric).all():
         raise ValueError("static_numeric contains NaN or inf values.")

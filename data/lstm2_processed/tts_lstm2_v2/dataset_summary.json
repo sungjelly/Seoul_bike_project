@@ -1,0 +1,149 @@
+{
+  "dataset_name": "tts_lstm2_v2",
+  "base_dataset_name": "base",
+  "base_data_dir": "../base",
+  "prediction_mode": "one_step_autoregressive",
+  "sources": [
+    {
+      "name": "2024_april_june",
+      "path": "data\\preprocessed\\2024_april_june"
+    },
+    {
+      "name": "2025",
+      "path": "data\\preprocessed\\2025"
+    }
+  ],
+  "source_boundaries": {
+    "2024_april_june": {
+      "start_idx": 0,
+      "end_idx": 4367,
+      "start_timestamp": "2024-04-01 00:00:00",
+      "end_timestamp": "2024-06-30 23:30:00"
+    },
+    "2025": {
+      "start_idx": 4368,
+      "end_idx": 21887,
+      "start_timestamp": "2025-01-01 00:00:00",
+      "end_timestamp": "2025-12-31 23:30:00"
+    }
+  },
+  "source_reports": {
+    "2024_april_june": {
+      "panel_rows": 12143040,
+      "assigned_rows": 12143040,
+      "observed_station_count": 2780,
+      "missing_station_count": 0,
+      "missing_station_numbers": [],
+      "reindexed_missing_stations_with_zero_demand": false
+    },
+    "2025": {
+      "panel_rows": 48320160,
+      "assigned_rows": 48320160,
+      "observed_station_count": 2758,
+      "missing_station_count": 22,
+      "missing_station_numbers": [
+        212,
+        253,
+        764,
+        790,
+        1026,
+        1721,
+        2076,
+        2113,
+        2275,
+        2282,
+        2316,
+        2322,
+        2355,
+        2421,
+        2527,
+        3305,
+        3603,
+        3621,
+        3787,
+        4590,
+        4901,
+        5855
+      ],
+      "reindexed_missing_stations_with_zero_demand": true
+    }
+  },
+  "T_total": 21888,
+  "S": 2780,
+  "dynamic_feature_dim": 7,
+  "target_time_feature_dim": 8,
+  "target_dim": 2,
+  "window_size": 33,
+  "horizon": 8,
+  "samples_per_split": {
+    "train": 33626880,
+    "val": 4136640,
+    "test_2025_winter": 8120380,
+    "test_2024_april_june": 9321340
+  },
+  "valid_target_timestamps_per_split": {
+    "train": 12096,
+    "val": 1488,
+    "test_2025_winter": 2921,
+    "test_2024_april_june": 3353
+  },
+  "split_ranges": {
+    "train": [
+      {
+        "source": "2025",
+        "start": "2025-01-01",
+        "end": "2025-09-30",
+        "valid_target_timestamp_count": 12096,
+        "sample_count": 33626880
+      }
+    ],
+    "val": [
+      {
+        "source": "2025",
+        "start": "2025-10-01",
+        "end": "2025-10-31",
+        "valid_target_timestamp_count": 1488,
+        "sample_count": 4136640
+      }
+    ],
+    "test_2025_winter": [
+      {
+        "source": "2025",
+        "start": "2025-11-01",
+        "end": "2025-12-31",
+        "valid_target_timestamp_count": 2921,
+        "sample_count": 8120380
+      }
+    ],
+    "test_2024_april_june": [
+      {
+        "source": "2024_april_june",
+        "start": "2024-04-01",
+        "end": "2024-06-30",
+        "valid_target_timestamp_count": 3353,
+        "sample_count": 9321340
+      }
+    ]
+  },
+  "missing_value_summary": {
+    "dynamic_features_nan_or_inf": 0,
+    "target_time_features_nan_or_inf": 0,
+    "targets_nan_or_inf": 0,
+    "targets_raw_nan_or_inf": 0
+  },
+  "generated_output_files": [
+    "base_data.json",
+    "district_vocab.json",
+    "feature_config.json",
+    "operation_type_vocab.json",
+    "sample_index_test_2024_april_june.npy",
+    "sample_index_test_2025_winter.npy",
+    "sample_index_train.npy",
+    "sample_index_val.npy",
+    "scalers.json",
+    "source_boundaries.json",
+    "splits.json",
+    "station_index_map.json",
+    "window_offsets.npy"
+  ]
+}

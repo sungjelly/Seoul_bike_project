@@ -14,7 +14,7 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 
 from src.data.lstm2.lstm2_dataset import FastLSTMBatchBuilder
-from src.models.lstm2 import TTSLSTM2
+from src.models.lstm2 import TTSLSTM2, TTSLSTM2V2
 from src.training.lstm_training.checkpointing import (
     initial_best,
     is_improvement,
@@ -26,6 +26,7 @@ from src.training.lstm_training.checkpointing import (
 )
 from src.training.lstm_training.config import apply_cli_overrides, flatten_config, load_config
 from src.training.lstm2_training.metrics import RawCountMetricAccumulator, inverse_transform_targets, load_target_scalers
+from src.training.lstm2_training.weather_uncertainty import apply_weather_noise
 from src.training.lstm_training.utils import (
     bool_from_string,
     detach_metric_dict,
@@ -91,8 +92,16 @@ def normalize_architecture_name(value: str) -> str:
     return value.replace("-", "_").lower()
 
 
+def is_v2_architecture(config: dict[str, Any]) -> bool:
+    architecture = normalize_architecture_name(str(config["model"].get("architecture", "tts_lstm2")))
+    return architecture == "tts_lstm2_v2"
+
+
 def validate_config_guardrails(config: dict[str, Any]) -> None:
     data_config = config["data"]
+    architecture = normalize_architecture_name(str(config["model"].get("architecture", "tts_lstm2")))
+    if architecture not in {"tts_lstm2", "tts_lstm2_v2"}:
+        raise ValueError(f"Unsupported lstm2 model architecture: {config['model'].get('architecture')}")
     expected = {
         "input_dim": 7,
         "target_time_dim": 8,
@@ -101,7 +110,7 @@ def validate_config_guardrails(config: dict[str, Any]) -> None:
     }
     for key, value in expected.items():
         if int(data_config[key]) != value:
-            raise ValueError(f"tts_lstm2 requires data.{key}={value}, got {data_config[key]}.")
+            raise ValueError(f"{architecture} requires data.{key}={value}, got {data_config[key]}.")
     serialized = json.dumps(config, ensure_ascii=False)
     for excluded in ("avg_duration_min", "avg_distance_m"):
         if excluded in serialized:
@@ -112,40 +121,50 @@ def build_model(config: dict, data_dir: Path, device: torch.device) -> torch.nn.
     summary, feature_config, district_vocab = load_feature_metadata(data_dir)
     model_config = config["model"]
     architecture = normalize_architecture_name(str(model_config.get("architecture", "tts_lstm2")))
-    if architecture != "tts_lstm2":
+    if architecture not in {"tts_lstm2", "tts_lstm2_v2"}:
         raise ValueError(f"Unsupported lstm2 model architecture: {model_config.get('architecture')}")
     if len(feature_config["dynamic_feature_columns"]) != 7:
-        raise ValueError("tts_lstm2 requires exactly 7 dynamic sequence features.")
+        raise ValueError(f"{architecture} requires exactly 7 dynamic sequence features.")
     if len(feature_config["target_time_feature_columns"]) != 8:
-        raise ValueError("tts_lstm2 requires exactly 8 target-time features.")
+        raise ValueError(f"{architecture} requires exactly 8 target-time features.")
     if int(feature_config["horizon"]) != 8:
-        raise ValueError("tts_lstm2 requires horizon=8.")
+        raise ValueError(f"{architecture} requires horizon=8 base target arrays.")
     common_kwargs = {
         "input_dim": len(feature_config["dynamic_feature_columns"]),
         "target_time_dim": len(feature_config["target_time_feature_columns"]),
         "static_numeric_dim": static_numeric_dim(feature_config),
         "output_dim": len(feature_config["target_columns"]),
-        "horizon": int(feature_config["horizon"]),
         "num_stations": int(summary["S"]),
         "num_districts": len(district_vocab),
     }
-    model = TTSLSTM2(
-        **common_kwargs,
-        window_offsets=feature_config["window_offsets"],
-        recent_offsets=model_config["recent_offsets"],
-        daily_offsets=model_config["daily_offsets"],
-        weekly_offsets=model_config["weekly_offsets"],
-        recent_hidden_dim=int(model_config["recent_hidden_dim"]),
-        daily_hidden_dim=int(model_config["daily_hidden_dim"]),
-        weekly_hidden_dim=int(model_config["weekly_hidden_dim"]),
-        recent_num_layers=int(model_config["recent_num_layers"]),
-        daily_num_layers=int(model_config["daily_num_layers"]),
-        weekly_num_layers=int(model_config["weekly_num_layers"]),
-        station_embedding_dim=int(model_config["station_embedding_dim"]),
-        district_embedding_dim=int(model_config["district_embedding_dim"]),
-        mlp_hidden_dims=model_config["mlp_hidden_dims"],
-        dropout=float(model_config["dropout"]),
-    )
+    branch_kwargs = {
+        "window_offsets": feature_config["window_offsets"],
+        "recent_offsets": model_config["recent_offsets"],
+        "daily_offsets": model_config["daily_offsets"],
+        "weekly_offsets": model_config["weekly_offsets"],
+        "recent_hidden_dim": int(model_config["recent_hidden_dim"]),
+        "daily_hidden_dim": int(model_config["daily_hidden_dim"]),
+        "weekly_hidden_dim": int(model_config["weekly_hidden_dim"]),
+        "recent_num_layers": int(model_config["recent_num_layers"]),
+        "daily_num_layers": int(model_config["daily_num_layers"]),
+        "weekly_num_layers": int(model_config["weekly_num_layers"]),
+        "station_embedding_dim": int(model_config["station_embedding_dim"]),
+        "district_embedding_dim": int(model_config["district_embedding_dim"]),
+        "mlp_hidden_dims": model_config["mlp_hidden_dims"],
+        "dropout": float(model_config["dropout"]),
+    }
+    if architecture == "tts_lstm2":
+        model = TTSLSTM2(
+            **common_kwargs,
+            horizon=int(feature_config["horizon"]),
+            **branch_kwargs,
+        )
+    else:
+        model = TTSLSTM2V2(
+            **common_kwargs,
+            **branch_kwargs,
+            future_weather_dim=int(model_config.get("future_weather_dim", 4)),
+        )
     return model.to(device)
 
 
@@ -178,6 +197,7 @@ def make_scheduler(optimizer: torch.optim.Optimizer, config: dict):
 
 
 def make_batches(config: dict, split: str, device: torch.device, shuffle: bool, return_raw_target: bool = False):
+    one_step = is_v2_architecture(config)
     return FastLSTMBatchBuilder(
         data_dir=config["paths"]["data_dir"],
         split=split,
@@ -187,10 +207,23 @@ def make_batches(config: dict, split: str, device: torch.device, shuffle: bool, 
         return_static=True,
         return_raw_target=return_raw_target,
         mmap_mode=config["data"].get("mmap_mode", "r"),
+        one_step_target=one_step,
+        target_horizon_index=0,
+        return_future_weather=one_step,
     )
 
 
-def forward_batch(model: torch.nn.Module, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+def forward_batch(model: torch.nn.Module, batch: dict[str, torch.Tensor], config: dict[str, Any]) -> torch.Tensor:
+    if is_v2_architecture(config):
+        return model(
+            x_seq=batch["x"],
+            target_time_features=batch["target_time_features"],
+            future_weather_features=batch["future_weather_features"],
+            static_numeric=batch["static_numeric"],
+            station_index=batch["station_idx"],
+            district_id=batch["district_id"],
+            operation_type_id=batch.get("operation_type_id"),
+        )
     return model(
         x_seq=batch["x"],
         target_time_features=batch["target_time_features"],
@@ -253,12 +286,22 @@ def smoke_test(
         raise ValueError(f"Smoke test expected x.shape[-1] == 7, got {batch['x'].shape[-1]}.")
     if batch["target_time_features"].shape[-1] != 8:
         raise ValueError("Smoke test expected target_time_features.shape[-1] == 8.")
-    if batch["y"].ndim != 3 or tuple(batch["y"].shape[-2:]) != (8, 2):
+    if is_v2_architecture(config):
+        if "future_weather_features" not in batch:
+            raise ValueError("Smoke test expected future_weather_features for tts_lstm2_v2.")
+        if batch["future_weather_features"].ndim != 2 or batch["future_weather_features"].shape[-1] != 4:
+            raise ValueError(
+                "Smoke test expected future_weather_features shape (B, 4), "
+                f"got {tuple(batch['future_weather_features'].shape)}."
+            )
+        if batch["y"].ndim != 2 or batch["y"].shape[-1] != 2:
+            raise ValueError(f"Smoke test expected y shape (B, 2), got {tuple(batch['y'].shape)}.")
+    elif batch["y"].ndim != 3 or tuple(batch["y"].shape[-2:]) != (8, 2):
         raise ValueError(f"Smoke test expected y shape (B, 8, 2), got {tuple(batch['y'].shape)}.")
     model.train()
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(use_amp):
-        pred = forward_batch(model, batch)
+        pred = forward_batch(model, batch, config)
         if pred.shape != batch["y"].shape:
             raise ValueError(f"Smoke test pred shape {tuple(pred.shape)} does not match y shape {tuple(batch['y'].shape)}.")
         loss = loss_fn(pred, batch["y"])
@@ -290,13 +333,22 @@ def evaluate_model(
     for batch_idx, batch in enumerate(tqdm(batches, desc=f"eval {split}", leave=False, total=len(batches))):
         if max_batches is not None and batch_idx >= max_batches:
             break
-        pred = forward_batch(model, batch)
+        pred = forward_batch(model, batch, config)
         loss = loss_fn(pred, batch["y"])
         batch_size = int(batch["y"].shape[0])
         total_loss += float(loss.item()) * batch_size
         total_samples += batch_size
         pred_raw = inverse_transform_targets(pred, target_scalers)
-        metrics.update(pred_raw, batch["y_raw"])
+        if pred_raw.ndim == 2:
+            pred_raw_for_metrics = pred_raw[:, None, :]
+        else:
+            pred_raw_for_metrics = pred_raw
+        y_raw = batch["y_raw"]
+        if y_raw.ndim == 2:
+            y_raw_for_metrics = y_raw.unsqueeze(1)
+        else:
+            y_raw_for_metrics = y_raw
+        metrics.update(pred_raw_for_metrics, y_raw_for_metrics)
     raw_metrics = metrics.compute()
     raw_metrics["loss"] = total_loss / max(total_samples, 1)
     return raw_metrics
@@ -320,8 +372,14 @@ def train_one_epoch(
     batches = make_batches(config, "train", device, shuffle=True)
     for batch in tqdm(batches, desc=f"train epoch {epoch}", leave=False, total=len(batches)):
         optimizer.zero_grad(set_to_none=True)
+        if is_v2_architecture(config) and bool(config.get("weather_noise", {}).get("enabled_train", False)):
+            batch["future_weather_features"] = apply_weather_noise(
+                batch["future_weather_features"],
+                config.get("weather_noise", {}),
+                enabled=True,
+            )
         with autocast_context(use_amp):
-            pred = forward_batch(model, batch)
+            pred = forward_batch(model, batch, config)
             loss = loss_fn(pred, batch["y"])
         if grad_scaler is not None and use_amp:
             grad_scaler.scale(loss).backward()

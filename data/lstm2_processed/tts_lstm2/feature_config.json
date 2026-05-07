@@ -1,0 +1,120 @@
+{
+  "horizon": 8,
+  "window_offsets": [
+    -1015,
+    -679,
+    -343,
+    -295,
+    -247,
+    -199,
+    -151,
+    -103,
+    -55,
+    -31,
+    -30,
+    -29,
+    -28,
+    -27,
+    -26,
+    -25,
+    -24,
+    -23,
+    -22,
+    -21,
+    -20,
+    -19,
+    -18,
+    -17,
+    -16,
+    -15,
+    -14,
+    -13,
+    -12,
+    -11,
+    -10,
+    -9,
+    -8
+  ],
+  "recent_offsets": [
+    -31,
+    -30,
+    -29,
+    -28,
+    -27,
+    -26,
+    -25,
+    -24,
+    -23,
+    -22,
+    -21,
+    -20,
+    -19,
+    -18,
+    -17,
+    -16,
+    -15,
+    -14,
+    -13,
+    -12,
+    -11,
+    -10,
+    -9,
+    -8
+  ],
+  "daily_offsets": [
+    -343,
+    -295,
+    -247,
+    -199,
+    -151,
+    -103,
+    -55
+  ],
+  "weekly_offsets": [
+    -1015,
+    -679,
+    -343
+  ],
+  "dynamic_feature_columns": [
+    "rental_count",
+    "return_count",
+    "net_demand",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "target_time_feature_columns": [
+    "hour_sin",
+    "hour_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "target_columns": [
+    "rental_count",
+    "return_count"
+  ],
+  "static_numeric_columns": [
+    "latitude_scaled",
+    "longitude_scaled",
+    "dock_count_raw_scaled"
+  ],
+  "categorical_static_columns": [
+    "district_id",
+    "operation_type_id"
+  ],
+  "transformations": {
+    "count_columns": [
+      "rental_count",
+      "return_count"
+    ],
+    "count_transform": "log1p",
+    "net_demand_transform": "signed_log1p",
+    "continuous_dynamic_transform": "standard",
+    "static_numeric_transform": "standard"
+  }
+}

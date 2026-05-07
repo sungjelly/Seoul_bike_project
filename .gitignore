@@ -7,9 +7,6 @@
 *.xlsx
 *.csv
 
-# Generated model-ready datasets
-data/lstm2_processed/
-
 # Python cache
 __pycache__/
 *.pyc

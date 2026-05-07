@@ -1,0 +1,14 @@
+{
+  "2024_april_june": {
+    "start_idx": 0,
+    "end_idx": 4367,
+    "start_timestamp": "2024-04-01 00:00:00",
+    "end_timestamp": "2024-06-30 23:30:00"
+  },
+  "2025": {
+    "start_idx": 4368,
+    "end_idx": 21887,
+    "start_timestamp": "2025-01-01 00:00:00",
+    "end_timestamp": "2025-12-31 23:30:00"
+  }
+}

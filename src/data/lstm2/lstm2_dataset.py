@@ -48,6 +48,9 @@ class SeoulBikeLSTMDataset(Dataset):
         return_raw_target: bool = True,
         return_static: bool = True,
         return_metadata: bool = False,
+        one_step_target: bool = False,
+        target_horizon_index: int = 0,
+        return_future_weather: bool = False,
     ) -> None:
         if torch is None:
             raise ImportError("PyTorch is required to use SeoulBikeLSTMDataset.")
@@ -59,6 +62,9 @@ class SeoulBikeLSTMDataset(Dataset):
         self.return_raw_target = return_raw_target
         self.return_static = return_static
         self.return_metadata = return_metadata
+        self.one_step_target = bool(one_step_target)
+        self.target_horizon_index = int(target_horizon_index)
+        self.return_future_weather = bool(return_future_weather)
 
         self.dynamic_features = np.load(self.array_dir / "dynamic_features.npy", mmap_mode=mmap_mode)
         self.target_time_features = np.load(self.array_dir / "target_time_features.npy", mmap_mode=mmap_mode)
@@ -100,6 +106,11 @@ class SeoulBikeLSTMDataset(Dataset):
             raise ValueError("targets.npy first two dimensions must match dynamic_features.npy.")
         if self.targets.shape[-2:] != (8, 2):
             raise ValueError("targets.npy last dimensions must be (8, 2).")
+        if self.target_horizon_index < 0 or self.target_horizon_index >= self.targets.shape[-2]:
+            raise ValueError(
+                f"target_horizon_index must be in [0, {self.targets.shape[-2] - 1}], "
+                f"got {self.target_horizon_index}."
+            )
         if self.targets_raw is not None:
             if self.targets_raw.ndim != 4 or self.targets_raw.shape[-2:] != (8, 2):
                 raise ValueError("targets_raw.npy must have shape (T, S, 8, 2).")
@@ -128,7 +139,10 @@ class SeoulBikeLSTMDataset(Dataset):
         input_time_idx = target_time_idx + self.window_offsets
 
         x_np = self.dynamic_features[input_time_idx, station_idx, :]
-        y_np = self.targets[target_time_idx, station_idx, :]
+        if self.one_step_target:
+            y_np = self.targets[target_time_idx, station_idx, self.target_horizon_index, :]
+        else:
+            y_np = self.targets[target_time_idx, station_idx, :]
         target_time_np = self.target_time_features[target_time_idx, :]
 
         item = {
@@ -140,8 +154,18 @@ class SeoulBikeLSTMDataset(Dataset):
         }
 
         if self.return_raw_target and self.targets_raw is not None:
+            if self.one_step_target:
+                y_raw_np = self.targets_raw[target_time_idx, station_idx, self.target_horizon_index, :]
+            else:
+                y_raw_np = self.targets_raw[target_time_idx, station_idx, :, :]
             item["y_raw"] = self.torch.as_tensor(
-                np.array(self.targets_raw[target_time_idx, station_idx, :, :], copy=True),
+                np.array(y_raw_np, copy=True),
+                dtype=self.torch.float32,
+            )
+        if self.return_future_weather:
+            weather_np = self.dynamic_features[target_time_idx, station_idx, [3, 4, 5, 6]]
+            item["future_weather_features"] = self.torch.as_tensor(
+                np.array(weather_np, copy=True),
                 dtype=self.torch.float32,
             )
         if self.return_static:
@@ -180,6 +204,9 @@ class FastLSTMBatchBuilder:
         return_static: bool = True,
         return_raw_target: bool = False,
         mmap_mode: str | None = "r",
+        one_step_target: bool = False,
+        target_horizon_index: int = 0,
+        return_future_weather: bool = False,
     ) -> None:
         if torch is None:
             raise ImportError("PyTorch is required to use FastLSTMBatchBuilder.")
@@ -194,6 +221,9 @@ class FastLSTMBatchBuilder:
         self.drop_last = bool(drop_last)
         self.return_static = bool(return_static)
         self.return_raw_target = bool(return_raw_target)
+        self.one_step_target = bool(one_step_target)
+        self.target_horizon_index = int(target_horizon_index)
+        self.return_future_weather = bool(return_future_weather)
         self.rng = np.random.default_rng(seed)
 
         if self.batch_size <= 0:
@@ -231,6 +261,11 @@ class FastLSTMBatchBuilder:
             raise ValueError("targets.npy first two dimensions must match dynamic_features.npy.")
         if self.targets.shape[-2:] != (8, 2):
             raise ValueError("targets.npy last dimensions must be (8, 2).")
+        if self.target_horizon_index < 0 or self.target_horizon_index >= self.targets.shape[-2]:
+            raise ValueError(
+                f"target_horizon_index must be in [0, {self.targets.shape[-2] - 1}], "
+                f"got {self.target_horizon_index}."
+            )
         if self.targets_raw is not None:
             if self.targets_raw.ndim != 4 or self.targets_raw.shape[-2:] != (8, 2):
                 raise ValueError("targets_raw.npy must have shape (T, S, 8, 2).")
@@ -267,7 +302,10 @@ class FastLSTMBatchBuilder:
         input_time_idx = target_time_idx[:, None] + self.window_offsets[None, :]
 
         x_np = self.dynamic_features[input_time_idx, station_idx[:, None], :]
-        y_np = self.targets[target_time_idx, station_idx, :]
+        if self.one_step_target:
+            y_np = self.targets[target_time_idx, station_idx, self.target_horizon_index, :]
+        else:
+            y_np = self.targets[target_time_idx, station_idx, :]
         target_time_np = self.target_time_features[target_time_idx, :]
 
         batch = {
@@ -289,9 +327,24 @@ class FastLSTMBatchBuilder:
                     self.torch.long,
                 )
         if self.return_raw_target and self.targets_raw is not None:
-            batch["y_raw"] = self._to_tensor(self.targets_raw[target_time_idx, station_idx, :, :], self.torch.float32)
-        if batch["y"].ndim != 3 or tuple(batch["y"].shape[-2:]) != (8, 2):
+            if self.one_step_target:
+                y_raw_np = self.targets_raw[target_time_idx, station_idx, self.target_horizon_index, :]
+            else:
+                y_raw_np = self.targets_raw[target_time_idx, station_idx, :, :]
+            batch["y_raw"] = self._to_tensor(y_raw_np, self.torch.float32)
+        if self.return_future_weather:
+            weather_np = self.dynamic_features[target_time_idx, station_idx, :][:, [3, 4, 5, 6]]
+            batch["future_weather_features"] = self._to_tensor(weather_np, self.torch.float32)
+        if self.one_step_target:
+            if batch["y"].ndim != 2 or batch["y"].shape[-1] != 2:
+                raise ValueError("Batch y must have shape (B, 2) for one-step targets.")
+            if self.return_raw_target and "y_raw" in batch and (batch["y_raw"].ndim != 2 or batch["y_raw"].shape[-1] != 2):
+                raise ValueError("Batch y_raw must have shape (B, 2) for one-step targets.")
+        elif batch["y"].ndim != 3 or tuple(batch["y"].shape[-2:]) != (8, 2):
             raise ValueError("Batch y must have shape (B, 8, 2).")
+        if self.return_future_weather:
+            if batch["future_weather_features"].ndim != 2 or batch["future_weather_features"].shape[-1] != 4:
+                raise ValueError("future_weather_features must have shape (B, 4).")
         return batch
 
 
