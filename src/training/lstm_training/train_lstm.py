@@ -14,8 +14,7 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 
 from src.data.lstm_baseline.lstm_dataset import FastLSTMBatchBuilder
-from src.models.baseline_lstm import BaselineLSTM
-from src.models.tts_lstm import TTSLSTM
+from src.models.lstm import BaselineLSTM, TTSLSTM
 from src.training.lstm_training.checkpointing import (
     initial_best,
     is_improvement,
