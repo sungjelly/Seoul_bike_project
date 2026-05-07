@@ -287,7 +287,9 @@ def evaluate_model(
     metrics = RawCountMetricAccumulator()
     total_loss = 0.0
     total_samples = 0
-    for batch_idx, batch in enumerate(tqdm(batches, desc=f"eval {split}", leave=False, total=len(batches))):
+    for batch_idx, batch in enumerate(
+        tqdm(batches, desc=f"eval {split}", leave=True, total=len(batches), file=sys.stdout, dynamic_ncols=True)
+    ):
         if max_batches is not None and batch_idx >= max_batches:
             break
         pred = forward_batch(model, batch)
@@ -321,7 +323,17 @@ def train_one_epoch(
     total_batches = len(batches)
     log_every = max(int(config["wandb"].get("log_every_n_steps", 100)), 1)
     print(f"Epoch {epoch} train start: batches={total_batches}, batch_size={config['training']['batch_size']}", flush=True)
-    for batch_idx, batch in enumerate(tqdm(batches, desc=f"train epoch {epoch}", leave=True, total=total_batches), start=1):
+    for batch_idx, batch in enumerate(
+        tqdm(
+            batches,
+            desc=f"train epoch {epoch}",
+            leave=True,
+            total=total_batches,
+            file=sys.stdout,
+            dynamic_ncols=True,
+        ),
+        start=1,
+    ):
         optimizer.zero_grad(set_to_none=True)
         with autocast_context(use_amp):
             pred = forward_batch(model, batch)
@@ -475,6 +487,8 @@ def main() -> None:
         epochs_without_improvement = int(restored["epochs_without_improvement"])
 
     maybe_load_colab_wandb_key()
+    if config["wandb"]["enabled"]:
+        print("Initializing W&B run...", flush=True)
     wandb_run = init_wandb(config, build_metadata(config), checkpoint_wandb_run_id)
     if wandb_run is not None:
         print(f"W&B run: {getattr(wandb_run, 'url', None) or getattr(wandb_run, 'name', 'initialized')}", flush=True)
