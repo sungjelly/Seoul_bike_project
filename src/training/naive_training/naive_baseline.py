@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.data.lstm_baseline.lstm_dataset import resolve_array_dir
+from src.data.lstm.lstm_dataset import resolve_array_dir
 from src.training.lstm_training.utils import bool_from_string
 
 

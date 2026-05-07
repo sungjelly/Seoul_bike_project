@@ -24,16 +24,16 @@ if __package__ is None or __package__ == "":
 from src.data.lstm.scaling import apply_transform, standardize
 
 
-DYNAMIC_FEATURE_COLUMNS = [
+DYNAMIC_SEQUENCE_COLUMNS = [
     "rental_count",
     "return_count",
     "net_demand",
-    "avg_duration_min",
-    "avg_distance_m",
     "temperature",
     "wind_speed",
     "rainfall",
     "humidity",
+]
+TARGET_TIME_FEATURE_COLUMNS = [
     "hour_sin",
     "hour_cos",
     "day_of_week_sin",
@@ -46,14 +46,7 @@ DYNAMIC_FEATURE_COLUMNS = [
 
 COUNT_COLUMNS = ["rental_count", "return_count"]
 TARGET_COLUMNS_DEFAULT = ["rental_count", "return_count"]
-CONTINUOUS_DYNAMIC_COLUMNS = [
-    "avg_duration_min",
-    "avg_distance_m",
-    "temperature",
-    "wind_speed",
-    "rainfall",
-    "humidity",
-]
+CONTINUOUS_DYNAMIC_COLUMNS = ["temperature", "wind_speed", "rainfall", "humidity"]
 STATIC_NUMERIC_COLUMNS = ["latitude", "longitude", "dock_count_raw"]
 STATIC_CATEGORICAL_COLUMNS = ["district_id", "operation_type_id"]
 PANEL_REQUIRED_COLUMNS = [
@@ -62,8 +55,6 @@ PANEL_REQUIRED_COLUMNS = [
     "rental_count",
     "return_count",
     "net_demand",
-    "avg_duration_min",
-    "avg_distance_m",
 ]
 WEATHER_REQUIRED_COLUMNS = ["timestamp", "temperature", "wind_speed", "rainfall", "humidity"]
 STATION_REQUIRED_COLUMNS = [
@@ -113,8 +104,8 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build compact LSTM tensors from preprocessed panels.")
-    parser.add_argument("--config", type=Path, default=Path("configs/data/lstm/lstm_v1_dataset.yaml"))
+    parser = argparse.ArgumentParser(description="Build compact LSTM2 tensors from preprocessed panels.")
+    parser.add_argument("--config", type=Path, default=Path("configs/data/lstm2/tts_lstm2.yaml"))
     parser.add_argument("--preprocessed-root", type=Path)
     parser.add_argument("--station-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
@@ -136,7 +127,7 @@ def apply_cli_overrides(config: dict[str, Any], args: argparse.Namespace) -> dic
 
 
 def resolve_output_dir(config: dict[str, Any]) -> Path:
-    output_dir = Path(config.get("output_dir", "data/lstm_processed"))
+    output_dir = Path(config.get("output_dir", "data/lstm2_processed"))
     dataset_name = config.get("dataset_name")
     if dataset_name and output_dir.name != dataset_name:
         output_dir = output_dir / str(dataset_name)
@@ -148,7 +139,7 @@ def resolve_base_dir(config: dict[str, Any], output_dir: Path) -> Path:
     base_dataset_name = config.get("base_dataset_name")
     if not base_dataset_name:
         return output_dir
-    base_root = Path(config.get("base_output_dir", config.get("output_dir", "data/lstm_processed")))
+    base_root = Path(config.get("base_output_dir", config.get("output_dir", "data/lstm2_processed")))
     if base_root.name != str(base_dataset_name):
         base_root = base_root / str(base_dataset_name)
     base_root.mkdir(parents=True, exist_ok=True)
@@ -165,9 +156,14 @@ def load_json_required(path: Path) -> dict[str, Any]:
     return read_json(path)
 
 
-def load_base_arrays(base_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+EXCLUDED_COLUMNS = {"avg_duration_min", "avg_distance_m"}
+LSTM2_HORIZON = 8
+
+
+def load_base_arrays(base_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     return (
         np.load(base_dir / "dynamic_features.npy", mmap_mode="r"),
+        np.load(base_dir / "target_time_features.npy", mmap_mode="r"),
         np.load(base_dir / "targets.npy", mmap_mode="r"),
         np.load(base_dir / "targets_raw.npy", mmap_mode="r"),
     )
@@ -267,6 +263,38 @@ def build_window_offsets(window_config: dict[str, Any]) -> np.ndarray:
     return np.asarray(sorted(set(offsets)), dtype=np.int32)
 
 
+def branch_offsets_from_config(config: dict[str, Any]) -> tuple[list[int], list[int], list[int]]:
+    model_window = config.get("window", {})
+    recent_offsets = [int(value) for value in model_window.get("recent_offsets", [])]
+    daily_offsets = [int(value) for value in model_window.get("daily_offsets", [])]
+    weekly_offsets = [int(value) for value in model_window.get("weekly_offsets", [])]
+    for name, values in [
+        ("recent_offsets", recent_offsets),
+        ("daily_offsets", daily_offsets),
+        ("weekly_offsets", weekly_offsets),
+    ]:
+        if not values:
+            raise ValueError(f"window.{name} must be non-empty for lstm2.")
+    return recent_offsets, daily_offsets, weekly_offsets
+
+
+def build_lstm2_window_offsets(config: dict[str, Any]) -> np.ndarray:
+    recent_offsets, daily_offsets, weekly_offsets = branch_offsets_from_config(config)
+    return np.asarray(sorted(set(recent_offsets + daily_offsets + weekly_offsets)), dtype=np.int32)
+
+
+def validate_lstm2_feature_schema(config: dict[str, Any]) -> None:
+    dynamic_config = [str(value) for value in config.get("dynamic_sequence_feature_columns", DYNAMIC_SEQUENCE_COLUMNS)]
+    target_time_config = [str(value) for value in config.get("target_time_feature_columns", TARGET_TIME_FEATURE_COLUMNS)]
+    if dynamic_config != DYNAMIC_SEQUENCE_COLUMNS:
+        raise ValueError(f"lstm2 dynamic sequence features must be exactly {DYNAMIC_SEQUENCE_COLUMNS}.")
+    if target_time_config != TARGET_TIME_FEATURE_COLUMNS:
+        raise ValueError(f"lstm2 target-time features must be exactly {TARGET_TIME_FEATURE_COLUMNS}.")
+    for excluded in EXCLUDED_COLUMNS:
+        if excluded in dynamic_config or excluded in target_time_config:
+            raise ValueError(f"{excluded} must not appear in lstm2 feature schema.")
+
+
 def validate_window_offsets(offsets: np.ndarray, horizon: int) -> None:
     if horizon <= 0:
         raise ValueError(f"horizon must be positive, got {horizon}")
@@ -277,6 +305,10 @@ def validate_window_offsets(offsets: np.ndarray, horizon: int) -> None:
         )
     if np.any(offsets >= 0):
         raise ValueError("All window offsets must be negative.")
+    if horizon != LSTM2_HORIZON:
+        raise ValueError(f"lstm2 horizon must be {LSTM2_HORIZON}, got {horizon}.")
+    if int(np.max(offsets)) > -LSTM2_HORIZON:
+        raise ValueError("lstm2 input windows must end at or before t - 8.")
 
 
 def source_timestamps(source: SourceSpec) -> np.ndarray:
@@ -383,26 +415,16 @@ def infer_holiday_flags_from_panel(source: SourceSpec, timestamps: np.ndarray) -
 
 def initialize_time_features(
     dynamic: np.memmap,
+    target_time_features: np.memmap,
     source_slice: slice,
     time_frame: pd.DataFrame,
 ) -> None:
-    for column in [
-        "temperature",
-        "wind_speed",
-        "rainfall",
-        "humidity",
-        "hour_sin",
-        "hour_cos",
-        "day_of_week_sin",
-        "day_of_week_cos",
-        "month_sin",
-        "month_cos",
-        "is_weekend",
-        "is_holiday",
-    ]:
-        feature_idx = DYNAMIC_FEATURE_COLUMNS.index(column)
+    for column in ["temperature", "wind_speed", "rainfall", "humidity"]:
+        feature_idx = DYNAMIC_SEQUENCE_COLUMNS.index(column)
         values = time_frame[column].to_numpy(dtype="float32")
         dynamic[source_slice, :, feature_idx] = values[:, None]
+    for idx, column in enumerate(TARGET_TIME_FEATURE_COLUMNS):
+        target_time_features[source_slice, idx] = time_frame[column].to_numpy(dtype="float32")
 
 
 def populate_panel_features(
@@ -441,16 +463,8 @@ def populate_panel_features(
         station_idx = station_index.loc[df["station_number"].to_numpy(dtype=np.int64)].to_numpy()
         observed_stations.update(df["station_number"].unique().astype(np.int64).tolist())
 
-        values = df[
-            [
-                "rental_count",
-                "return_count",
-                "net_demand",
-                "avg_duration_min",
-                "avg_distance_m",
-            ]
-        ].to_numpy(dtype="float32", copy=False)
-        dynamic[global_time_idx, station_idx, 0:5] = values
+        values = df[["rental_count", "return_count", "net_demand"]].to_numpy(dtype="float32", copy=False)
+        dynamic[global_time_idx, station_idx, 0:3] = values
         assigned_rows += len(df)
 
     missing_stations = sorted(set(station_numbers.tolist()) - observed_stations)
@@ -471,30 +485,40 @@ def build_dynamic_and_targets(
     timestamps_all: np.ndarray,
     station_numbers: np.ndarray,
     target_columns: list[str],
-) -> tuple[np.memmap, np.memmap, np.memmap, dict[str, Any]]:
+) -> tuple[np.memmap, np.memmap, np.memmap, np.memmap, dict[str, Any]]:
     T = len(timestamps_all)
     S = len(station_numbers)
-    F = len(DYNAMIC_FEATURE_COLUMNS)
+    F = len(DYNAMIC_SEQUENCE_COLUMNS)
     target_dim = len(target_columns)
+    horizon = LSTM2_HORIZON
     dynamic = np.lib.format.open_memmap(
         output_dir / "dynamic_features.npy",
         mode="w+",
         dtype="float32",
         shape=(T, S, F),
     )
+    target_time_features = np.lib.format.open_memmap(
+        output_dir / "target_time_features.npy",
+        mode="w+",
+        dtype="float32",
+        shape=(T, len(TARGET_TIME_FEATURE_COLUMNS)),
+    )
     targets_raw = np.lib.format.open_memmap(
         output_dir / "targets_raw.npy",
         mode="w+",
         dtype="float32",
-        shape=(T, S, target_dim),
+        shape=(T, S, horizon, target_dim),
     )
     targets = np.lib.format.open_memmap(
         output_dir / "targets.npy",
         mode="w+",
         dtype="float32",
-        shape=(T, S, target_dim),
+        shape=(T, S, horizon, target_dim),
     )
     dynamic[:] = 0.0
+    target_time_features[:] = 0.0
+    targets_raw[:] = 0.0
+    targets[:] = 0.0
     source_reports: dict[str, Any] = {}
 
     for source in sources:
@@ -502,7 +526,7 @@ def build_dynamic_and_targets(
         local_timestamps = timestamps_all[boundary.start_idx : boundary.end_idx + 1]
         source_slice = slice(boundary.start_idx, boundary.end_idx + 1)
         time_frame = build_time_frame(source, local_timestamps)
-        initialize_time_features(dynamic, source_slice, time_frame)
+        initialize_time_features(dynamic, target_time_features, source_slice, time_frame)
         source_reports[source.name] = populate_panel_features(
             dynamic,
             source,
@@ -511,11 +535,24 @@ def build_dynamic_and_targets(
             station_numbers,
         )
 
-    for idx, column in enumerate(target_columns):
-        targets_raw[:, :, idx] = dynamic[:, :, DYNAMIC_FEATURE_COLUMNS.index(column)]
+    for boundary in boundaries.values():
+        for horizon_idx in range(horizon):
+            source_start = boundary.start_idx
+            source_end_exclusive = boundary.end_idx + 1
+            target_start = source_start
+            target_end = source_end_exclusive - horizon_idx
+            if target_end <= target_start:
+                continue
+            source_time = slice(source_start + horizon_idx, source_end_exclusive)
+            target_time = slice(target_start, target_end)
+            for target_idx, column in enumerate(target_columns):
+                feature_idx = DYNAMIC_SEQUENCE_COLUMNS.index(column)
+                targets_raw[target_time, :, horizon_idx, target_idx] = dynamic[source_time, :, feature_idx]
     dynamic.flush()
+    target_time_features.flush()
     targets_raw.flush()
-    return dynamic, targets, targets_raw, source_reports
+    targets.flush()
+    return dynamic, target_time_features, targets, targets_raw, source_reports
 
 
 def parse_start(value: str) -> pd.Timestamp:
@@ -537,6 +574,7 @@ def make_sample_index_for_range(
     boundary: SourceBoundary,
     station_count: int,
     window_offsets: np.ndarray,
+    horizon: int,
 ) -> np.ndarray:
     ts = pd.DatetimeIndex(timestamps_all[boundary.start_idx : boundary.end_idx + 1])
     start_ts = parse_start(start)
@@ -548,6 +586,7 @@ def make_sample_index_for_range(
     valid_local = local_candidates[
         (local_candidates + int(np.min(window_offsets)) >= 0)
         & (local_candidates + int(np.max(window_offsets)) < boundary.length)
+        & (local_candidates + horizon - 1 < boundary.length)
     ]
     if len(valid_local) == 0:
         return np.empty((0, 2), dtype=np.int32)
@@ -592,6 +631,7 @@ def build_sample_indices(
                 boundaries[source_name],
                 station_count,
                 window_offsets,
+                int(config.get("horizon", LSTM2_HORIZON)),
             )
             pieces.append(pairs)
             valid_targets = int(len(np.unique(pairs[:, 0])) if len(pairs) else 0)
@@ -658,7 +698,12 @@ def streaming_mean_std(
         indices = np.asarray(time_indices, dtype=np.int64)
         for start in range(0, len(indices), chunk_size):
             idx = indices[start : start + chunk_size]
-            values = array[idx, :, feature_idx].astype("float64", copy=False)
+            if array.ndim == 3:
+                values = array[idx, :, feature_idx].astype("float64", copy=False)
+            elif array.ndim == 4:
+                values = array[idx, :, :, feature_idx].astype("float64", copy=False)
+            else:
+                raise ValueError(f"Cannot fit scaler on array with rank {array.ndim}.")
             transformed = apply_transform(values, transform)
             total += float(transformed.sum(dtype=np.float64))
             total_sq += float(np.square(transformed, dtype=np.float64).sum(dtype=np.float64))
@@ -687,7 +732,7 @@ def fit_scalers(
 
     count_fit_arrays: list[tuple[np.ndarray, np.ndarray, int]] = []
     for column in COUNT_COLUMNS:
-        count_fit_arrays.append((dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index(column)))
+        count_fit_arrays.append((dynamic, train_times, DYNAMIC_SEQUENCE_COLUMNS.index(column)))
     for column in target_columns:
         if column in COUNT_COLUMNS:
             count_fit_arrays.append((targets_raw, train_times, target_columns.index(column)))
@@ -711,14 +756,14 @@ def fit_scalers(
     }
 
     net_mean, net_std = streaming_mean_std(
-        [(dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index("net_demand"))],
+        [(dynamic, train_times, DYNAMIC_SEQUENCE_COLUMNS.index("net_demand"))],
         "signed_log1p",
     )
     scalers["net_demand_scaler"] = {"transform": "signed_log1p", "mean": net_mean, "std": net_std}
 
     for column in CONTINUOUS_DYNAMIC_COLUMNS:
         mean, std = streaming_mean_std(
-            [(dynamic, train_times, DYNAMIC_FEATURE_COLUMNS.index(column))],
+            [(dynamic, train_times, DYNAMIC_SEQUENCE_COLUMNS.index(column))],
             "none",
         )
         scalers["dynamic_continuous"][column] = {"transform": "none", "mean": mean, "std": std}
@@ -745,7 +790,7 @@ def apply_scaling(
     count_mean = float(count_scaler["mean"])
     count_std = float(count_scaler["std"])
     for column in COUNT_COLUMNS:
-        feature_idx = DYNAMIC_FEATURE_COLUMNS.index(column)
+        feature_idx = DYNAMIC_SEQUENCE_COLUMNS.index(column)
         for start in range(0, dynamic.shape[0], chunk_size):
             end = min(start + chunk_size, dynamic.shape[0])
             transformed = apply_transform(dynamic[start:end, :, feature_idx], "log1p")
@@ -754,15 +799,15 @@ def apply_scaling(
     net_scaler = scalers["net_demand_scaler"]
     for start in range(0, dynamic.shape[0], chunk_size):
         end = min(start + chunk_size, dynamic.shape[0])
-        transformed = apply_transform(dynamic[start:end, :, DYNAMIC_FEATURE_COLUMNS.index("net_demand")], "signed_log1p")
-        dynamic[start:end, :, DYNAMIC_FEATURE_COLUMNS.index("net_demand")] = standardize(
+        transformed = apply_transform(dynamic[start:end, :, DYNAMIC_SEQUENCE_COLUMNS.index("net_demand")], "signed_log1p")
+        dynamic[start:end, :, DYNAMIC_SEQUENCE_COLUMNS.index("net_demand")] = standardize(
             transformed,
             float(net_scaler["mean"]),
             float(net_scaler["std"]),
         ).astype("float32")
 
     for column, scaler in scalers["dynamic_continuous"].items():
-        feature_idx = DYNAMIC_FEATURE_COLUMNS.index(column)
+        feature_idx = DYNAMIC_SEQUENCE_COLUMNS.index(column)
         for start in range(0, dynamic.shape[0], chunk_size):
             end = min(start + chunk_size, dynamic.shape[0])
             dynamic[start:end, :, feature_idx] = standardize(
@@ -776,8 +821,8 @@ def apply_scaling(
             raise ValueError(f"Only count targets are currently supported for scaling, got {column}")
         for start in range(0, targets.shape[0], chunk_size):
             end = min(start + chunk_size, targets.shape[0])
-            transformed = apply_transform(targets_raw[start:end, :, idx], "log1p")
-            targets[start:end, :, idx] = standardize(transformed, count_mean, count_std).astype("float32")
+            transformed = apply_transform(targets_raw[start:end, :, :, idx], "log1p")
+            targets[start:end, :, :, idx] = standardize(transformed, count_mean, count_std).astype("float32")
     dynamic.flush()
     targets.flush()
 
@@ -829,6 +874,7 @@ def validate_sample_indices(
     T: int,
     S: int,
     window_offsets: np.ndarray,
+    horizon: int,
 ) -> None:
     boundary_ranges = [(boundary.start_idx, boundary.end_idx) for boundary in boundaries.values()]
     for split_name, sample_index in split_arrays.items():
@@ -852,11 +898,14 @@ def validate_sample_indices(
             input_times = target_time + window_offsets.astype(np.int64)
             if input_times.min() < start_idx or input_times.max() > end_idx:
                 raise ValueError(f"{split_name}: sample at target {target_time} crosses a source boundary.")
+            if target_time + horizon - 1 > end_idx:
+                raise ValueError(f"{split_name}: horizon target at {target_time} crosses a source boundary.")
 
 
 def validate_outputs(
     array_dir: Path,
     dynamic: np.ndarray,
+    target_time_features: np.ndarray,
     targets: np.ndarray,
     targets_raw: np.ndarray,
     station_numbers: np.ndarray,
@@ -867,17 +916,29 @@ def validate_outputs(
     horizon: int,
 ) -> dict[str, int]:
     T, S, F = dynamic.shape
-    if F != len(DYNAMIC_FEATURE_COLUMNS):
-        raise ValueError("dynamic feature dimension mismatch.")
-    if targets.shape[:2] != (T, S) or targets_raw.shape != targets.shape:
-        raise ValueError("targets and targets_raw must share shape (T, S, target_dim).")
+    if F != len(DYNAMIC_SEQUENCE_COLUMNS):
+        raise ValueError(f"dynamic feature dimension mismatch: expected 7, got {F}.")
+    if target_time_features.shape != (T, len(TARGET_TIME_FEATURE_COLUMNS)):
+        raise ValueError("target_time_features.npy must have shape (T, 8).")
+    if targets.ndim != 4 or targets_raw.ndim != 4:
+        raise ValueError("targets.npy and targets_raw.npy must be rank-4 arrays.")
+    if targets.shape[:2] != (T, S) or targets.shape[-2:] != (LSTM2_HORIZON, len(TARGET_COLUMNS_DEFAULT)):
+        raise ValueError("targets.npy must have shape (T, S, 8, 2).")
+    if targets_raw.shape != targets.shape:
+        raise ValueError("targets_raw.npy must match targets.npy shape (T, S, 8, 2).")
     if not np.array_equal(station_numbers, shared_station_numbers):
         raise ValueError("Saved station_numbers do not match shared station order.")
     validate_window_offsets(window_offsets, horizon)
-    validate_sample_indices(split_arrays, boundaries, T, S, window_offsets)
+    validate_sample_indices(split_arrays, boundaries, T, S, window_offsets, horizon)
+
+    feature_lists = [DYNAMIC_SEQUENCE_COLUMNS, TARGET_TIME_FEATURE_COLUMNS]
+    for excluded in EXCLUDED_COLUMNS:
+        if any(excluded in feature_list for feature_list in feature_lists):
+            raise ValueError(f"{excluded} must not appear in lstm2 model input feature lists.")
 
     missing = {
         "dynamic_features_nan_or_inf": count_nonfinite(dynamic),
+        "target_time_features_nan_or_inf": count_nonfinite(target_time_features),
         "targets_nan_or_inf": count_nonfinite(targets),
         "targets_raw_nan_or_inf": count_nonfinite(targets_raw),
     }
@@ -886,6 +947,7 @@ def validate_outputs(
 
     for filename, dtype in [
         ("dynamic_features.npy", np.float32),
+        ("target_time_features.npy", np.float32),
         ("targets.npy", np.float32),
         ("targets_raw.npy", np.float32),
         ("static_numeric.npy", np.float32),
@@ -952,9 +1014,13 @@ def save_metadata(
         write_json(base_dir / "scalers.json", scalers)
 
     feature_config = {
-        "horizon": int(config.get("horizon", 1)),
+        "horizon": int(config.get("horizon", LSTM2_HORIZON)),
         "window_offsets": window_offsets.astype(int).tolist(),
-        "dynamic_feature_columns": DYNAMIC_FEATURE_COLUMNS,
+        "recent_offsets": [int(value) for value in config["window"]["recent_offsets"]],
+        "daily_offsets": [int(value) for value in config["window"]["daily_offsets"]],
+        "weekly_offsets": [int(value) for value in config["window"]["weekly_offsets"]],
+        "dynamic_feature_columns": DYNAMIC_SEQUENCE_COLUMNS,
+        "target_time_feature_columns": TARGET_TIME_FEATURE_COLUMNS,
         "target_columns": target_columns,
         "static_numeric_columns": [f"{name}_scaled" for name in STATIC_NUMERIC_COLUMNS],
         "categorical_static_columns": STATIC_CATEGORICAL_COLUMNS,
@@ -978,10 +1044,11 @@ def save_metadata(
         "source_reports": source_reports,
         "T_total": int(len(timestamps_all)),
         "S": int(len(station_numbers)),
-        "dynamic_feature_dim": len(DYNAMIC_FEATURE_COLUMNS),
+        "dynamic_feature_dim": len(DYNAMIC_SEQUENCE_COLUMNS),
+        "target_time_feature_dim": len(TARGET_TIME_FEATURE_COLUMNS),
         "target_dim": len(target_columns),
         "window_size": int(len(window_offsets)),
-        "horizon": int(config.get("horizon", 1)),
+        "horizon": int(config.get("horizon", LSTM2_HORIZON)),
         "samples_per_split": {name: int(meta["sample_count"]) for name, meta in split_meta.items()},
         "valid_target_timestamps_per_split": {
             name: int(meta["valid_target_timestamp_count"]) for name, meta in split_meta.items()
@@ -1011,11 +1078,14 @@ def main() -> None:
     station_dir = Path(config.get("station_dir", "data/preprocessed/station"))
     sources = resolve_sources(config)
     horizon = int(config.get("horizon", 1))
+    if horizon != LSTM2_HORIZON:
+        raise ValueError(f"tts_lstm2 requires horizon={LSTM2_HORIZON}, got {horizon}.")
+    validate_lstm2_feature_schema(config)
     target_columns = [str(x) for x in config.get("target_columns", TARGET_COLUMNS_DEFAULT)]
     if target_columns != TARGET_COLUMNS_DEFAULT:
         raise ValueError("This baseline builder currently supports target_columns: rental_count, return_count.")
 
-    window_offsets = build_window_offsets(config.get("window", {}))
+    window_offsets = build_lstm2_window_offsets(config)
     validate_window_offsets(window_offsets, horizon)
     np.save(output_dir / "window_offsets.npy", window_offsets.astype(np.int32))
 
@@ -1034,7 +1104,7 @@ def main() -> None:
             for name, item in source_boundaries_json.items()
         }
         timestamps_all = np.load(base_dir / "timestamps.npy", mmap_mode="r")
-        dynamic, targets, targets_raw = load_base_arrays(base_dir)
+        dynamic, target_time_features, targets, targets_raw = load_base_arrays(base_dir)
         (
             static_numeric,
             district_ids,
@@ -1046,7 +1116,7 @@ def main() -> None:
             scalers,
         ) = load_base_static_outputs(base_dir)
         source_reports = load_json_required(base_dir / "dataset_summary.json").get("source_reports", {})
-        logging.info("Reusing base LSTM arrays from %s", base_dir)
+        logging.info("Reusing base LSTM2 arrays from %s", base_dir)
     else:
         station_metadata, station_numbers = load_station_inputs(station_dir)
         boundaries, timestamps_all = build_source_boundaries(sources)
@@ -1056,10 +1126,10 @@ def main() -> None:
             "Building tensors: T=%s, S=%s, F=%s into %s",
             len(timestamps_all),
             len(station_numbers),
-            len(DYNAMIC_FEATURE_COLUMNS),
+            len(DYNAMIC_SEQUENCE_COLUMNS),
             base_dir,
         )
-        dynamic, targets, targets_raw, source_reports = build_dynamic_and_targets(
+        dynamic, target_time_features, targets, targets_raw, source_reports = build_dynamic_and_targets(
             base_dir,
             sources,
             boundaries,
@@ -1113,6 +1183,7 @@ def main() -> None:
     missing_summary = validate_outputs(
         base_dir,
         dynamic,
+        target_time_features,
         targets,
         targets_raw,
         np.load(base_dir / "station_numbers.npy"),
@@ -1146,7 +1217,7 @@ def main() -> None:
         operation_type_vocab,
         missing_summary,
     )
-    logging.info("LSTM dataset complete: %s", output_dir)
+    logging.info("LSTM2 dataset complete: %s", output_dir)
 
 
 if __name__ == "__main__":

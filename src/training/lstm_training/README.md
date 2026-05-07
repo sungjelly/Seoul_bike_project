@@ -75,9 +75,9 @@ Common overrides:
 python -m src.training.lstm_training.train_lstm \
   --config configs/models/lstm/lstm_v2.yaml \
   --data_dir data/lstm_processed/lstm_v2 \
-  --checkpoint_dir checkpoints/lstm_v2 \
-  --model_dir models/lstm_v2 \
-  --log_dir logs/lstm_v2 \
+  --checkpoint_dir checkpoints/lstm/lstm_v2 \
+  --model_dir models/lstm/lstm_v2 \
+  --log_dir logs/lstm/lstm_v2 \
   --batch_size 32768 \
   --resume auto \
   --resume_mode auto \
@@ -103,7 +103,7 @@ W&B run.
 ```bash
 python -m src.training.lstm_training.evaluate \
   --config configs/models/lstm/lstm_v1.yaml \
-  --checkpoint_path checkpoints/lstm_v1/best.pt \
+  --checkpoint_path checkpoints/lstm/lstm_v1/best.pt \
   --split test_2025_winter
 ```
 
@@ -126,9 +126,9 @@ notebook derives:
 
 ```text
 /content/lstm_processed/<DATASET_VERSION>
-/content/drive/MyDrive/Seoul_bike_project/checkpoints/<MODEL_VERSION>
-/content/drive/MyDrive/Seoul_bike_project/models/<MODEL_VERSION>
-/content/drive/MyDrive/Seoul_bike_project/logs/<MODEL_VERSION>
+/content/drive/MyDrive/Seoul_bike_project/checkpoints/lstm/<MODEL_VERSION>
+/content/drive/MyDrive/Seoul_bike_project/models/lstm/<MODEL_VERSION>
+/content/drive/MyDrive/Seoul_bike_project/logs/lstm/<MODEL_VERSION>
 ```
 
 ## Adding Another Model

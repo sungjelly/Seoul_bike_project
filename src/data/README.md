@@ -11,7 +11,7 @@ train models, create graph edges, or run experiments.
   - Shared station output: `data/preprocessed/station/`.
   - Main time-range output: `data/preprocessed/<range>/station_time_panel.parquet`.
 
-- `lstm_baseline/make_lstm_dataset.py`
+- `lstm/make_lstm_dataset.py`
   - Builds the supervised baseline LSTM dataset from one or more
     `data/preprocessed` source panels.
   - Saves base arrays only, not materialized sequence windows.
@@ -19,12 +19,19 @@ train models, create graph edges, or run experiments.
     and lightweight window-specific metadata to
     `data/lstm_processed/<dataset_name>/`.
 
-- `lstm_baseline/lstm_dataset.py`
+- `lstm/lstm_dataset.py`
   - Defines a lazy PyTorch Dataset that slices LSTM windows on demand from
     the compact arrays produced by `make_lstm_dataset.py`.
 
-- `lstm_baseline/scaling.py`
+- `lstm/scaling.py`
   - Reusable transform and inverse-transform helpers.
+
+- `lstm2/make_lstm2_dataset.py`
+  - Builds the parallel `lstm2` dataset family under `data/lstm2_processed`.
+  - The first variation is `tts_lstm2`.
+  - `lstm2` keeps weather in the LSTM sequence, moves calendar/time features to
+    `target_time_features.npy`, and intentionally excludes `avg_duration_min`
+    and `avg_distance_m` from current model inputs.
 
 ## Commands
 
@@ -63,7 +70,7 @@ python src/data/preprocess/preprocess_data.py \
 Then build the LSTM baseline dataset:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v1_dataset.yaml
+python src/data/lstm/make_lstm_dataset.py --config configs/data/lstm/lstm_v1_dataset.yaml
 ```
 
 The v1 config builds shared base arrays in `data/lstm_processed/base` and
@@ -80,7 +87,7 @@ base arrays should be reused.
 Build `lstm_v2` after `lstm_v1` when you only want to change the LSTM window:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py --config configs/data/lstm/lstm_v2_dataset.yaml
+python src/data/lstm/make_lstm_dataset.py --config configs/data/lstm/lstm_v2_dataset.yaml
 ```
 
 `configs/data/lstm/lstm_v2_dataset.yaml` sets `reuse_base_arrays: true`, so it reads the
@@ -90,7 +97,7 @@ large arrays from `data/lstm_processed/base` and writes only
 CLI overrides are available for path-level changes:
 
 ```bash
-python src/data/lstm_baseline/make_lstm_dataset.py \
+python src/data/lstm/make_lstm_dataset.py \
   --config configs/data/lstm/lstm_v1_dataset.yaml \
   --output-dir data/lstm_processed \
   --dataset-name lstm_v1
@@ -112,6 +119,21 @@ Expected shared base files include:
 - `district_vocab.json`
 - `operation_type_vocab.json`
 - `dataset_summary.json`
+
+Build the first `lstm2` dataset variation:
+
+```bash
+python -m src.data.lstm2.make_lstm2_dataset --config configs/data/lstm2/tts_lstm2.yaml
+```
+
+All `lstm2` variations reuse `data/lstm2_processed/base`. The `tts_lstm2`
+variation writes window offsets, sample indexes, and metadata to
+`data/lstm2_processed/tts_lstm2`. Its sequence tensor has 7 features:
+rentals, returns, net demand, and weather. Calendar/time features are stored in
+`target_time_features.npy` with shape `(T, 8)` and are passed to the model head,
+not to the LSTM branches. `avg_duration_min` and `avg_distance_m` are excluded
+for now because of reliability concerns; they may be reintroduced later in a
+GCN/GNN-specific dataset.
 
 Expected version-specific files include:
 

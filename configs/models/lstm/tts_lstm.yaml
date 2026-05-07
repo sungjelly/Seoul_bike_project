@@ -11,9 +11,9 @@ project:
 
 paths:
   data_dir: data/lstm_processed/tts_lstm
-  checkpoint_dir: checkpoints/tts_lstm
-  model_dir: models/tts_lstm
-  log_dir: logs/tts_lstm
+  checkpoint_dir: checkpoints/lstm/tts_lstm
+  model_dir: models/lstm/tts_lstm
+  log_dir: logs/lstm/tts_lstm
 
 data:
   sequence_length: 32

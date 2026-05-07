@@ -1,24 +1,26 @@
 project:
   name: Seoul_Bike_Project
-  entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
-  run_name: lstm_v3
+  entity: null
+  run_name: tts_lstm2
   tags:
-    - baseline
-    - lstm
-    - smooth_l1
-    - next_30min
-  notes: Baseline station-level LSTM for Seoul bike next-window demand prediction.
+    - lstm2
+    - tts_lstm2
+    - seasonal
+    - tritemporal
+    - multi_horizon
+  notes: LSTM2 TTS model with weather in sequence, calendar features in MLP head, no duration/distance features, and 8-step horizon.
 
 paths:
-  data_dir: data/lstm_processed/lstm_v1
-  checkpoint_dir: checkpoints/lstm/lstm_v3
-  model_dir: models/lstm/lstm_v3
-  log_dir: logs/lstm/lstm_v3
+  data_dir: data/lstm2_processed/tts_lstm2
+  checkpoint_dir: checkpoints/lstm2/tts_lstm2
+  model_dir: models/lstm2/tts_lstm2
+  log_dir: logs/lstm2/tts_lstm2
 
 data:
-  sequence_length: 8
-  horizon: 1
-  input_dim: 17
+  sequence_length: 33
+  horizon: 8
+  input_dim: 7
+  target_time_dim: 8
   static_numeric_dim: 4
   output_dim: 2
   num_workers: 2
@@ -27,22 +29,33 @@ data:
   mmap_mode: r
 
 model:
-  architecture: BaselineLSTM
-  hidden_dim: 64
-  num_layers: 3
+  architecture: tts_lstm2
+
+  recent_offsets: [-31, -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8]
+  daily_offsets: [-343, -295, -247, -199, -151, -103, -55]
+  weekly_offsets: [-1015, -679, -343]
+
+  recent_hidden_dim: 64
+  daily_hidden_dim: 32
+  weekly_hidden_dim: 32
+
+  recent_num_layers: 1
+  daily_num_layers: 1
+  weekly_num_layers: 1
+
   station_embedding_dim: 16
   district_embedding_dim: 8
-  mlp_hidden_dim: 256
-  dropout: 0.1
+  mlp_hidden_dims: [128, 64]
+  dropout: 0.2
 
 training:
   loss: SmoothL1Loss
   smooth_l1_beta: 1.0
   optimizer: AdamW
-  learning_rate: 0.001
-  weight_decay: 0.0001
-  batch_size: 4096
-  max_epochs: 12
+  learning_rate: 0.0005
+  weight_decay: 0.0003
+  batch_size: 32768
+  max_epochs: 15
   gradient_clip_norm: 1.0
   mixed_precision: true
   seed: 42
@@ -52,12 +65,12 @@ scheduler:
   name: ReduceLROnPlateau
   mode: min
   factor: 0.5
-  patience: 2
+  patience: 1
   min_lr: 0.000001
 
 early_stopping:
   enabled: true
-  patience: 5
+  patience: 3
   monitor: val_total_mae
   mode: min
 
@@ -74,7 +87,7 @@ checkpointing:
   save_rng_state: true
 
 resume:
-  enabled: true
+  enabled: false
   checkpoint_path: null
   mode: auto
   allow_hparam_override: true
@@ -83,10 +96,10 @@ resume:
 
 wandb:
   enabled: true
-  entity: sungjelly-kaist-digital-humanities-and-social-sciences-g
-  project: Seoul_Bike_Project
-  name: lstm_v1
-  group: lstm_v1
+  entity: null
+  project: Seoul_bike_project
+  name: tts_lstm2
+  group: lstm2
   job_type: train
   resume: allow
   run_id: null

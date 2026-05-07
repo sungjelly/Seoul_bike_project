@@ -13,8 +13,8 @@ from tqdm.auto import tqdm
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 
-from src.data.lstm.lstm_dataset import FastLSTMBatchBuilder
-from src.models.lstm import BaselineLSTM, TTSLSTM
+from src.data.lstm2.lstm2_dataset import FastLSTMBatchBuilder
+from src.models.lstm2 import TTSLSTM2
 from src.training.lstm_training.checkpointing import (
     initial_best,
     is_improvement,
@@ -25,7 +25,7 @@ from src.training.lstm_training.checkpointing import (
     save_checkpoint,
 )
 from src.training.lstm_training.config import apply_cli_overrides, flatten_config, load_config
-from src.training.lstm_training.metrics import RawCountMetricAccumulator, inverse_transform_targets, load_target_scalers
+from src.training.lstm2_training.metrics import RawCountMetricAccumulator, inverse_transform_targets, load_target_scalers
 from src.training.lstm_training.utils import (
     bool_from_string,
     detach_metric_dict,
@@ -39,8 +39,8 @@ from src.training.lstm_training.utils import (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the Seoul bike LSTM.")
-    parser.add_argument("--config", type=Path, default=Path("configs/models/lstm/lstm_v1.yaml"))
+    parser = argparse.ArgumentParser(description="Train the Seoul bike LSTM2.")
+    parser.add_argument("--config", type=Path, default=Path("configs/models/lstm2/tts_lstm2.yaml"))
     parser.add_argument("--data_dir", type=str, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default=None)
     parser.add_argument("--model_dir", type=str, default=None)
@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", type=str, default=None)
     parser.add_argument("--resume_mode", choices=["auto", "full", "weights_only", "model_optimizer"], default=None)
     parser.add_argument("--wandb_enabled", type=bool_from_string, default=None)
-    parser.add_argument("--smoke_test", type=bool_from_string, default=True)
+    parser.add_argument("--smoke_test", type=bool_from_string, default=False)
     parser.add_argument("--smoke_batch_size", type=int, default=512)
     return parser.parse_args()
 
@@ -91,50 +91,61 @@ def normalize_architecture_name(value: str) -> str:
     return value.replace("-", "_").lower()
 
 
+def validate_config_guardrails(config: dict[str, Any]) -> None:
+    data_config = config["data"]
+    expected = {
+        "input_dim": 7,
+        "target_time_dim": 8,
+        "horizon": 8,
+        "output_dim": 2,
+    }
+    for key, value in expected.items():
+        if int(data_config[key]) != value:
+            raise ValueError(f"tts_lstm2 requires data.{key}={value}, got {data_config[key]}.")
+    serialized = json.dumps(config, ensure_ascii=False)
+    for excluded in ("avg_duration_min", "avg_distance_m"):
+        if excluded in serialized:
+            raise ValueError(f"{excluded} must not appear in lstm2 model config.")
+
+
 def build_model(config: dict, data_dir: Path, device: torch.device) -> torch.nn.Module:
     summary, feature_config, district_vocab = load_feature_metadata(data_dir)
     model_config = config["model"]
-    architecture = normalize_architecture_name(str(model_config.get("architecture", "baseline_lstm")))
+    architecture = normalize_architecture_name(str(model_config.get("architecture", "tts_lstm2")))
+    if architecture != "tts_lstm2":
+        raise ValueError(f"Unsupported lstm2 model architecture: {model_config.get('architecture')}")
+    if len(feature_config["dynamic_feature_columns"]) != 7:
+        raise ValueError("tts_lstm2 requires exactly 7 dynamic sequence features.")
+    if len(feature_config["target_time_feature_columns"]) != 8:
+        raise ValueError("tts_lstm2 requires exactly 8 target-time features.")
+    if int(feature_config["horizon"]) != 8:
+        raise ValueError("tts_lstm2 requires horizon=8.")
     common_kwargs = {
         "input_dim": len(feature_config["dynamic_feature_columns"]),
+        "target_time_dim": len(feature_config["target_time_feature_columns"]),
         "static_numeric_dim": static_numeric_dim(feature_config),
         "output_dim": len(feature_config["target_columns"]),
+        "horizon": int(feature_config["horizon"]),
         "num_stations": int(summary["S"]),
         "num_districts": len(district_vocab),
     }
-    if architecture == "baselinelstm":
-        architecture = "baseline_lstm"
-
-    if architecture == "baseline_lstm":
-        model = BaselineLSTM(
-            **common_kwargs,
-            hidden_dim=int(model_config["hidden_dim"]),
-            num_layers=int(model_config["num_layers"]),
-            station_embedding_dim=int(model_config["station_embedding_dim"]),
-            district_embedding_dim=int(model_config["district_embedding_dim"]),
-            mlp_hidden_dim=int(model_config["mlp_hidden_dim"]),
-            dropout=float(model_config["dropout"]),
-        )
-    elif architecture == "tts_lstm":
-        model = TTSLSTM(
-            **common_kwargs,
-            window_offsets=feature_config["window_offsets"],
-            recent_offsets=model_config["recent_offsets"],
-            daily_offsets=model_config["daily_offsets"],
-            weekly_offsets=model_config["weekly_offsets"],
-            recent_hidden_dim=int(model_config["recent_hidden_dim"]),
-            daily_hidden_dim=int(model_config["daily_hidden_dim"]),
-            weekly_hidden_dim=int(model_config["weekly_hidden_dim"]),
-            recent_num_layers=int(model_config["recent_num_layers"]),
-            daily_num_layers=int(model_config["daily_num_layers"]),
-            weekly_num_layers=int(model_config["weekly_num_layers"]),
-            station_embedding_dim=int(model_config["station_embedding_dim"]),
-            district_embedding_dim=int(model_config["district_embedding_dim"]),
-            mlp_hidden_dims=model_config["mlp_hidden_dims"],
-            dropout=float(model_config["dropout"]),
-        )
-    else:
-        raise ValueError(f"Unsupported model architecture: {model_config.get('architecture')}")
+    model = TTSLSTM2(
+        **common_kwargs,
+        window_offsets=feature_config["window_offsets"],
+        recent_offsets=model_config["recent_offsets"],
+        daily_offsets=model_config["daily_offsets"],
+        weekly_offsets=model_config["weekly_offsets"],
+        recent_hidden_dim=int(model_config["recent_hidden_dim"]),
+        daily_hidden_dim=int(model_config["daily_hidden_dim"]),
+        weekly_hidden_dim=int(model_config["weekly_hidden_dim"]),
+        recent_num_layers=int(model_config["recent_num_layers"]),
+        daily_num_layers=int(model_config["daily_num_layers"]),
+        weekly_num_layers=int(model_config["weekly_num_layers"]),
+        station_embedding_dim=int(model_config["station_embedding_dim"]),
+        district_embedding_dim=int(model_config["district_embedding_dim"]),
+        mlp_hidden_dims=model_config["mlp_hidden_dims"],
+        dropout=float(model_config["dropout"]),
+    )
     return model.to(device)
 
 
@@ -180,15 +191,13 @@ def make_batches(config: dict, split: str, device: torch.device, shuffle: bool, 
 
 
 def forward_batch(model: torch.nn.Module, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-    static_numeric = batch["static_numeric"]
-    if "operation_type_id" in batch:
-        operation_type = batch["operation_type_id"].to(dtype=static_numeric.dtype).unsqueeze(1)
-        static_numeric = torch.cat([static_numeric, operation_type], dim=1)
     return model(
-        batch["x"],
-        static_numeric=static_numeric,
+        x_seq=batch["x"],
+        target_time_features=batch["target_time_features"],
+        static_numeric=batch["static_numeric"],
         station_index=batch["station_idx"],
         district_id=batch["district_id"],
+        operation_type_id=batch.get("operation_type_id"),
     )
 
 
@@ -240,10 +249,18 @@ def smoke_test(
     config["training"]["batch_size"] = old_batch_size
     if not torch.isfinite(batch["x"]).all() or not torch.isfinite(batch["y"]).all():
         raise ValueError("Smoke test found non-finite input or target values.")
+    if batch["x"].shape[-1] != 7:
+        raise ValueError(f"Smoke test expected x.shape[-1] == 7, got {batch['x'].shape[-1]}.")
+    if batch["target_time_features"].shape[-1] != 8:
+        raise ValueError("Smoke test expected target_time_features.shape[-1] == 8.")
+    if batch["y"].ndim != 3 or tuple(batch["y"].shape[-2:]) != (8, 2):
+        raise ValueError(f"Smoke test expected y shape (B, 8, 2), got {tuple(batch['y'].shape)}.")
     model.train()
     optimizer.zero_grad(set_to_none=True)
     with autocast_context(use_amp):
         pred = forward_batch(model, batch)
+        if pred.shape != batch["y"].shape:
+            raise ValueError(f"Smoke test pred shape {tuple(pred.shape)} does not match y shape {tuple(batch['y'].shape)}.")
         loss = loss_fn(pred, batch["y"])
     if not torch.isfinite(loss):
         raise ValueError("Smoke test produced a non-finite loss.")
@@ -336,12 +353,13 @@ def build_metadata(config: dict) -> dict[str, Any]:
         "architecture": config["model"]["architecture"],
         "data_dir": str(data_dir),
         "input_dim": len(feature_config["dynamic_feature_columns"]),
+        "target_time_dim": len(feature_config["target_time_feature_columns"]),
         "static_numeric_dim": static_numeric_dim(feature_config),
         "output_dim": len(feature_config["target_columns"]),
+        "horizon": int(feature_config["horizon"]),
         "num_stations": int(summary["S"]),
         "num_districts": len(district_vocab),
         "window_offsets": feature_config["window_offsets"],
-        "horizon": feature_config["horizon"],
         "train_sample_count": int(summary["samples_per_split"]["train"]),
         "val_sample_count": int(summary["samples_per_split"]["val"]),
         "eval_scale": "raw_count",
@@ -362,6 +380,7 @@ def maybe_load_colab_wandb_key() -> None:
 def main() -> None:
     args = parse_args()
     config = apply_cli_overrides(load_config(args.config), args)
+    validate_config_guardrails(config)
     ensure_dirs(config["paths"]["checkpoint_dir"], config["paths"]["model_dir"], config["paths"]["log_dir"])
     set_seed(int(config["training"]["seed"]))
     device = select_device(config["training"]["device"])
@@ -378,6 +397,7 @@ def main() -> None:
     if args.smoke_test:
         loss = smoke_test(model, config, loss_fn, optimizer, device, use_amp, grad_scaler, args.smoke_batch_size)
         print(f"Smoke test passed. loss={loss:.6f}")
+        return
 
     checkpoint_dir = Path(config["paths"]["checkpoint_dir"])
     resume_path = resolve_resume_checkpoint(

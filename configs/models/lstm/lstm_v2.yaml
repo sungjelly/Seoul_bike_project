@@ -12,9 +12,9 @@ project:
 
 paths:
   data_dir: data/lstm_processed/lstm_v2
-  checkpoint_dir: checkpoints/lstm_v2
-  model_dir: models/lstm_v2
-  log_dir: logs/lstm_v2
+  checkpoint_dir: checkpoints/lstm/lstm_v2
+  model_dir: models/lstm/lstm_v2
+  log_dir: logs/lstm/lstm_v2
 
 data:
   sequence_length: 24

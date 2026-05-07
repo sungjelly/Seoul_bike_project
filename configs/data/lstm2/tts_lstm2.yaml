@@ -1,0 +1,99 @@
+dataset_name: tts_lstm2
+base_dataset_name: base
+reuse_base_arrays: false
+preprocessed_root: data/preprocessed
+station_dir: data/preprocessed/station
+output_dir: data/lstm2_processed
+
+sources:
+  - name: 2024_april_june
+    path: data/preprocessed/2024_april_june
+  - name: 2025
+    path: data/preprocessed/2025
+
+horizon: 8
+target_columns:
+  - rental_count
+  - return_count
+
+dynamic_sequence_feature_columns:
+  - rental_count
+  - return_count
+  - net_demand
+  - temperature
+  - wind_speed
+  - rainfall
+  - humidity
+
+target_time_feature_columns:
+  - hour_sin
+  - hour_cos
+  - day_of_week_sin
+  - day_of_week_cos
+  - month_sin
+  - month_cos
+  - is_weekend
+  - is_holiday
+
+window:
+  recent_offsets:
+    - -31
+    - -30
+    - -29
+    - -28
+    - -27
+    - -26
+    - -25
+    - -24
+    - -23
+    - -22
+    - -21
+    - -20
+    - -19
+    - -18
+    - -17
+    - -16
+    - -15
+    - -14
+    - -13
+    - -12
+    - -11
+    - -10
+    - -9
+    - -8
+  daily_offsets:
+    - -343
+    - -295
+    - -247
+    - -199
+    - -151
+    - -103
+    - -55
+  weekly_offsets:
+    - -1015
+    - -679
+    - -343
+
+train_split_name: train
+scaling_chunk_size: 512
+
+splits:
+  train:
+    - source: 2025
+      start: 2025-01-01
+      end: 2025-09-30
+
+  val:
+    - source: 2025
+      start: 2025-10-01
+      end: 2025-10-31
+
+  test_2025_winter:
+    - source: 2025
+      start: 2025-11-01
+      end: 2025-12-31
+
+  test_2024_april_june:
+    - source: 2024_april_june
+      start: 2024-04-01
+      end: 2024-06-30
