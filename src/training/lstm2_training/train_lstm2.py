@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", type=str, default=None)
     parser.add_argument("--resume_mode", choices=["auto", "full", "weights_only", "model_optimizer"], default=None)
     parser.add_argument("--wandb_enabled", type=bool_from_string, default=None)
-    parser.add_argument("--smoke_test", type=bool_from_string, default=False)
+    parser.add_argument("--smoke_test", type=bool_from_string, default=True)
     parser.add_argument("--smoke_batch_size", type=int, default=512)
     return parser.parse_args()
 
@@ -287,9 +287,7 @@ def evaluate_model(
     metrics = RawCountMetricAccumulator()
     total_loss = 0.0
     total_samples = 0
-    for batch_idx, batch in enumerate(
-        tqdm(batches, desc=f"eval {split}", leave=True, total=len(batches), file=sys.stdout, dynamic_ncols=True)
-    ):
+    for batch_idx, batch in enumerate(tqdm(batches, desc=f"eval {split}", leave=False, total=len(batches))):
         if max_batches is not None and batch_idx >= max_batches:
             break
         pred = forward_batch(model, batch)
@@ -320,20 +318,7 @@ def train_one_epoch(
     total_loss = 0.0
     total_samples = 0
     batches = make_batches(config, "train", device, shuffle=True)
-    total_batches = len(batches)
-    log_every = max(int(config["wandb"].get("log_every_n_steps", 100)), 1)
-    print(f"Epoch {epoch} train start: batches={total_batches}, batch_size={config['training']['batch_size']}", flush=True)
-    for batch_idx, batch in enumerate(
-        tqdm(
-            batches,
-            desc=f"train epoch {epoch}",
-            leave=True,
-            total=total_batches,
-            file=sys.stdout,
-            dynamic_ncols=True,
-        ),
-        start=1,
-    ):
+    for batch in tqdm(batches, desc=f"train epoch {epoch}", leave=False, total=len(batches)):
         optimizer.zero_grad(set_to_none=True)
         with autocast_context(use_amp):
             pred = forward_batch(model, batch)
@@ -353,27 +338,10 @@ def train_one_epoch(
         total_loss += float(loss.item()) * batch_size
         total_samples += batch_size
         global_step += 1
-        if wandb_run is not None and global_step % log_every == 0:
+        if wandb_run is not None and global_step % int(config["wandb"]["log_every_n_steps"]) == 0:
             wandb_run.log(
                 {"train/loss": float(loss.item()), "train/lr": get_current_lr(optimizer), "train/epoch": epoch},
                 step=global_step,
-            )
-        if batch_idx == 1 or batch_idx == total_batches or batch_idx % log_every == 0:
-            running_loss = total_loss / max(total_samples, 1)
-            print(
-                json.dumps(
-                    {
-                        "event": "train_progress",
-                        "epoch": epoch,
-                        "batch": batch_idx,
-                        "batches": total_batches,
-                        "global_step": global_step,
-                        "batch_loss": float(loss.item()),
-                        "running_loss": float(running_loss),
-                        "lr": get_current_lr(optimizer),
-                    }
-                ),
-                flush=True,
             )
     return total_loss / max(total_samples, 1), global_step
 
@@ -419,24 +387,6 @@ def main() -> None:
     use_amp = bool(config["training"]["mixed_precision"]) and device.type == "cuda"
 
     data_dir = Path(config["paths"]["data_dir"])
-    print(
-        json.dumps(
-            {
-                "event": "training_setup",
-                "architecture": config["model"]["architecture"],
-                "data_dir": str(data_dir),
-                "checkpoint_dir": config["paths"]["checkpoint_dir"],
-                "model_dir": config["paths"]["model_dir"],
-                "log_dir": config["paths"]["log_dir"],
-                "batch_size": int(config["training"]["batch_size"]),
-                "max_epochs": int(config["training"]["max_epochs"]),
-                "device": str(device),
-                "mixed_precision": bool(use_amp),
-                "wandb_enabled": bool(config["wandb"]["enabled"]),
-            }
-        ),
-        flush=True,
-    )
     model = build_model(config, data_dir, device)
     loss_fn = make_loss(config)
     optimizer = make_optimizer(model, config)
@@ -447,7 +397,6 @@ def main() -> None:
     if args.smoke_test:
         loss = smoke_test(model, config, loss_fn, optimizer, device, use_amp, grad_scaler, args.smoke_batch_size)
         print(f"Smoke test passed. loss={loss:.6f}")
-        return
 
     checkpoint_dir = Path(config["paths"]["checkpoint_dir"])
     resume_path = resolve_resume_checkpoint(
@@ -487,24 +436,16 @@ def main() -> None:
         epochs_without_improvement = int(restored["epochs_without_improvement"])
 
     maybe_load_colab_wandb_key()
-    if config["wandb"]["enabled"]:
-        print("Initializing W&B run...", flush=True)
     wandb_run = init_wandb(config, build_metadata(config), checkpoint_wandb_run_id)
-    if wandb_run is not None:
-        print(f"W&B run: {getattr(wandb_run, 'url', None) or getattr(wandb_run, 'name', 'initialized')}", flush=True)
-    else:
-        print("W&B disabled for this run.", flush=True)
     global_step = sync_global_step_with_wandb(global_step, wandb_run)
 
     best_path = checkpoint_dir / "best.pt"
     last_path = checkpoint_dir / "last.pt"
     max_epochs = int(config["training"]["max_epochs"])
     for epoch in range(start_epoch, max_epochs):
-        print(f"Epoch {epoch}/{max_epochs - 1} starting.", flush=True)
         train_loss, global_step = train_one_epoch(
             model, config, loss_fn, optimizer, device, grad_scaler, use_amp, global_step, wandb_run, epoch
         )
-        print(f"Epoch {epoch} validation start.", flush=True)
         val_metrics = evaluate_model(
             model,
             config,
