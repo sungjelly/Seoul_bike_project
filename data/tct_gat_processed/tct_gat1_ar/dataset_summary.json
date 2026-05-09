@@ -1,0 +1,211 @@
+{
+  "dataset_name": "tct_gat1_ar",
+  "created_at": "2026-05-09T09:12:59.884518+00:00",
+  "num_stations": 2780,
+  "num_timestamps": 21888,
+  "S": 2780,
+  "T": 21888,
+  "window_offsets": [
+    -1008,
+    -672,
+    -336,
+    -288,
+    -240,
+    -192,
+    -144,
+    -96,
+    -48,
+    -24,
+    -23,
+    -22,
+    -21,
+    -20,
+    -19,
+    -18,
+    -17,
+    -16,
+    -15,
+    -14,
+    -13,
+    -12,
+    -11,
+    -10,
+    -9,
+    -8,
+    -7,
+    -6,
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "num_window_offsets": 33,
+  "splits": {
+    "train": [
+      {
+        "source": "2025",
+        "start": "2025-01-01",
+        "end": "2025-09-30"
+      }
+    ],
+    "val": [
+      {
+        "source": "2025",
+        "start": "2025-10-01",
+        "end": "2025-10-31"
+      }
+    ],
+    "test_2025_winter": [
+      {
+        "source": "2025",
+        "start": "2025-11-01",
+        "end": "2025-12-31"
+      }
+    ],
+    "test_2024_april_june": [
+      {
+        "source": "2024_april_june",
+        "start": "2024-04-01",
+        "end": "2024-06-30"
+      }
+    ]
+  },
+  "samples_per_split": {
+    "train": 12096,
+    "val": 1488,
+    "test_2025_winter": 2928,
+    "test_2024_april_june": 3360
+  },
+  "feature_shapes": {
+    "rental_features": [
+      21888,
+      2780,
+      5
+    ],
+    "return_features": [
+      21888,
+      2780,
+      5
+    ],
+    "targets": [
+      21888,
+      2780,
+      2
+    ],
+    "targets_raw": [
+      21888,
+      2780,
+      2
+    ],
+    "future_weather_features": [
+      21888,
+      4
+    ],
+    "target_time_features": [
+      21888,
+      8
+    ],
+    "static_numeric": [
+      2780,
+      3
+    ]
+  },
+  "target_columns": [
+    "rental_count",
+    "return_count"
+  ],
+  "rental_feature_columns": [
+    "rental_count",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "return_feature_columns": [
+    "return_count",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "future_weather_columns": [
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "target_time_feature_columns": [
+    "hour_sin",
+    "hour_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "static_columns": [
+    "latitude",
+    "longitude",
+    "dock_count_raw"
+  ],
+  "graph_dir": "data/tct_gat_processed/tct_gat1_ar/graph",
+  "source_paths": {
+    "2024_april_june": "data\\preprocessed\\2024_april_june",
+    "2025": "data\\preprocessed\\2025"
+  },
+  "scaling_summary": {
+    "target": {
+      "rental_count": {
+        "mean": 0.3738567018386003,
+        "std": 0.5622645270087773,
+        "transform": "log1p"
+      },
+      "return_count": {
+        "mean": 0.3709900502952288,
+        "std": 0.5643923012990837,
+        "transform": "log1p"
+      }
+    },
+    "weather": {
+      "temperature": {
+        "mean": 15.602315105563786,
+        "std": 11.666230415981675,
+        "transform": "identity"
+      },
+      "wind_speed": {
+        "mean": 1.6366782984736128,
+        "std": 0.7337669752344304,
+        "transform": "identity"
+      },
+      "rainfall": {
+        "mean": 0.17805922984728936,
+        "std": 1.107883181150023,
+        "transform": "identity"
+      },
+      "humidity": {
+        "mean": 64.42190642467494,
+        "std": 19.54234873247654,
+        "transform": "identity"
+      }
+    },
+    "static_numeric": {
+      "latitude": {
+        "mean": 37.54771815506475,
+        "std": 0.052334668756053,
+        "transform": "identity"
+      },
+      "longitude": {
+        "mean": 126.99193882011151,
+        "std": 0.09294714529140956,
+        "transform": "identity"
+      },
+      "dock_count_raw": {
+        "mean": 12.054676258992806,
+        "std": 5.512891667308503,
+        "transform": "identity"
+      }
+    }
+  }
+}

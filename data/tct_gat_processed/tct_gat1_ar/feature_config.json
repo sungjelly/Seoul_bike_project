@@ -1,0 +1,151 @@
+{
+  "rental_feature_columns": [
+    "rental_count",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "return_feature_columns": [
+    "return_count",
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "target_columns": [
+    "rental_count",
+    "return_count"
+  ],
+  "future_weather_feature_columns": [
+    "temperature",
+    "wind_speed",
+    "rainfall",
+    "humidity"
+  ],
+  "target_time_feature_columns": [
+    "hour_sin",
+    "hour_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "month_sin",
+    "month_cos",
+    "is_weekend",
+    "is_holiday"
+  ],
+  "static_numeric_columns": [
+    "latitude",
+    "longitude",
+    "dock_count_raw"
+  ],
+  "categorical_static_columns": [
+    "district",
+    "operation_type"
+  ],
+  "window_offsets": [
+    -1008,
+    -672,
+    -336,
+    -288,
+    -240,
+    -192,
+    -144,
+    -96,
+    -48,
+    -24,
+    -23,
+    -22,
+    -21,
+    -20,
+    -19,
+    -18,
+    -17,
+    -16,
+    -15,
+    -14,
+    -13,
+    -12,
+    -11,
+    -10,
+    -9,
+    -8,
+    -7,
+    -6,
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "recent_offsets": [
+    -24,
+    -23,
+    -22,
+    -21,
+    -20,
+    -19,
+    -18,
+    -17,
+    -16,
+    -15,
+    -14,
+    -13,
+    -12,
+    -11,
+    -10,
+    -9,
+    -8,
+    -7,
+    -6,
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "daily_offsets": [
+    -336,
+    -288,
+    -240,
+    -192,
+    -144,
+    -96,
+    -48
+  ],
+  "weekly_offsets": [
+    -1008,
+    -672,
+    -336
+  ],
+  "district_vocab": {
+    "강남구": 0,
+    "강동구": 1,
+    "강북구": 2,
+    "강서구": 3,
+    "관악구": 4,
+    "광진구": 5,
+    "구로구": 6,
+    "금천구": 7,
+    "노원구": 8,
+    "도봉구": 9,
+    "동대문구": 10,
+    "동작구": 11,
+    "마포구": 12,
+    "서대문구": 13,
+    "서초구": 14,
+    "성동구": 15,
+    "성북구": 16,
+    "송파구": 17,
+    "양천구": 18,
+    "영등포구": 19,
+    "용산구": 20,
+    "은평구": 21,
+    "종로구": 22,
+    "중구": 23,
+    "중랑구": 24
+  },
+  "operation_type_vocab": {
+    "LCD": 0,
+    "QR": 1
+  }
+}

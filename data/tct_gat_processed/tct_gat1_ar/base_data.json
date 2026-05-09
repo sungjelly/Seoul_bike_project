@@ -1,0 +1,14 @@
+{
+  "timestamps": "data\\tct_gat_processed\\tct_gat1_ar\\timestamps.npy",
+  "station_numbers": "data\\tct_gat_processed\\tct_gat1_ar\\station_numbers.npy",
+  "rental_features": "data\\tct_gat_processed\\tct_gat1_ar\\rental_features.npy",
+  "return_features": "data\\tct_gat_processed\\tct_gat1_ar\\return_features.npy",
+  "targets": "data\\tct_gat_processed\\tct_gat1_ar\\targets.npy",
+  "targets_raw": "data\\tct_gat_processed\\tct_gat1_ar\\targets_raw.npy",
+  "future_weather_features": "data\\tct_gat_processed\\tct_gat1_ar\\future_weather_features.npy",
+  "target_time_features": "data\\tct_gat_processed\\tct_gat1_ar\\target_time_features.npy",
+  "static_numeric": "data\\tct_gat_processed\\tct_gat1_ar\\static_numeric.npy",
+  "district_ids": "data\\tct_gat_processed\\tct_gat1_ar\\district_ids.npy",
+  "operation_type_ids": "data\\tct_gat_processed\\tct_gat1_ar\\operation_type_ids.npy",
+  "window_offsets": "data\\tct_gat_processed\\tct_gat1_ar\\window_offsets.npy"
+}

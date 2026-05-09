@@ -1,0 +1,135 @@
+project:
+  name: Seoul_Bike_Project
+  entity: null
+  run_name: tct_gat1_ar
+  tags:
+    - tct_gat
+    - graph_snapshot
+    - edge_aware_gat
+    - autoregressive
+    - one_step
+  notes: TCT-GAT1-AR one-step graph-snapshot model with rental/return tokens, fixed OD/correlation edge attributes, and autoregressive rollout.
+
+paths:
+  data_dir: data/tct_gat_processed/tct_gat1_ar
+  graph_dir: data/tct_gat_processed/tct_gat1_ar/graph
+  checkpoint_dir: checkpoints/tct_gat/tct_gat1_ar
+  model_dir: models/tct_gat/tct_gat1_ar
+  log_dir: logs/tct_gat/tct_gat1_ar
+
+data:
+  input_dim: 5
+  target_time_dim: 8
+  future_weather_dim: 4
+  output_dim: 2
+  mmap_mode: r
+
+model:
+  architecture: tct_gat1_ar
+
+  recent_offsets: [-24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1]
+  daily_offsets: [-336, -288, -240, -192, -144, -96, -48]
+  weekly_offsets: [-1008, -672, -336]
+
+  recent_hidden_dim: 64
+  daily_hidden_dim: 32
+  weekly_hidden_dim: 32
+
+  recent_num_layers: 1
+  daily_num_layers: 1
+  weekly_num_layers: 1
+
+  station_embedding_dim: 16
+  district_embedding_dim: 8
+  operation_type_embedding_dim: 1
+  static_context_dim: 32
+
+  token_dim: 128
+  gat_layers: 1
+  gat_heads: 4
+  edge_embedding_dim: 16
+
+  decoder_hidden_dims: [128, 64]
+  dropout: 0.2
+  gat_dropout: 0.1
+  attention_dropout: 0.1
+
+training:
+  loss: SmoothL1Loss
+  smooth_l1_beta: 1.0
+  optimizer: AdamW
+  learning_rate: 0.0005
+  weight_decay: 0.0003
+  batch_size: 1
+  max_epochs: 20
+  gradient_clip_norm: 1.0
+  mixed_precision: true
+  seed: 42
+  device: auto
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: min
+  factor: 0.5
+  patience: 2
+  min_lr: 0.000001
+
+early_stopping:
+  enabled: true
+  patience: 5
+  monitor: val_total_mae
+  mode: min
+
+checkpointing:
+  save_every_epoch: false
+  save_best: true
+  save_last: true
+  keep_last_n: 0
+  monitor: val_total_mae
+  mode: min
+  save_optimizer_state: true
+  save_scheduler_state: true
+  save_amp_scaler_state: true
+  save_rng_state: true
+
+resume:
+  enabled: false
+  checkpoint_path: null
+  mode: auto
+  allow_hparam_override: true
+  reset_optimizer: false
+  reset_scheduler: false
+
+wandb:
+  enabled: true
+  entity: null
+  project: Seoul_bike_project
+  name: tct_gat1_ar
+  group: tct_gat
+  job_type: train
+  resume: allow
+  run_id: null
+  log_model: false
+  watch_model: false
+  log_every_n_steps: 10
+
+validation:
+  eval_every_epoch: true
+  max_val_batches: null
+
+testing:
+  run_test_after_training: true
+  checkpoint: best
+
+weather_noise:
+  enabled_train: true
+  enabled_eval: false
+  temperature_std: 1.0
+  wind_speed_std: 0.5
+  humidity_std: 5.0
+  rainfall_occurrence_flip_prob: 0.05
+  rainfall_intensity_scale_std: 0.25
+
+rollout:
+  horizons: 8
+  monte_carlo_samples: 1
