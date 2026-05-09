@@ -1,0 +1,15 @@
+dataset_name: tct_gat1_ar
+output_dir: data/tct_gat_processed/tct_gat1_ar/graph
+raw_rental_dir: data/raw/rentals
+station_metadata_path: data/preprocessed/station/station_metadata_clean.parquet
+station_time_panel_path: data/preprocessed/2025/station_time_panel.parquet
+train_start: 2025-01-01
+train_end: 2025-09-30
+k_neighbors: 32
+lags:
+  - 1
+  - 2
+  - 3
+  - 4
+chunksize: 500000
+overwrite: false

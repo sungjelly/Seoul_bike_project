@@ -1,0 +1,238 @@
+{
+  "dataset_name": "tct_gat1_ar",
+  "created_at": "2026-05-09T08:19:07.268267+00:00",
+  "train_start": "2025-01-01",
+  "train_end": "2025-09-30",
+  "num_stations": 2780,
+  "k_neighbors": 32,
+  "lags": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "edge_feature_columns": [
+    "geo_distance_km",
+    "inverse_geo_distance",
+    "same_district",
+    "operation_pair_lcd_lcd",
+    "operation_pair_lcd_qr",
+    "operation_pair_qr_lcd",
+    "operation_pair_qr_qr",
+    "has_od_flow_fwd",
+    "log_od_flow_fwd",
+    "od_probability_fwd",
+    "reverse_od_probability_fwd",
+    "mean_duration_min_fwd",
+    "mean_trip_distance_km_fwd",
+    "mean_duration_lag_bins_fwd",
+    "has_od_flow_rev",
+    "log_od_flow_rev",
+    "od_probability_rev",
+    "reverse_od_probability_rev",
+    "mean_duration_min_rev",
+    "mean_trip_distance_km_rev",
+    "mean_duration_lag_bins_rev",
+    "rental_corr",
+    "return_corr",
+    "rental_to_return_corr",
+    "best_rental_to_return_lag_norm",
+    "return_to_rental_corr",
+    "best_return_to_rental_lag_norm"
+  ],
+  "continuous_columns": [
+    "geo_distance_km",
+    "inverse_geo_distance",
+    "log_od_flow_fwd",
+    "od_probability_fwd",
+    "reverse_od_probability_fwd",
+    "mean_duration_min_fwd",
+    "mean_trip_distance_km_fwd",
+    "mean_duration_lag_bins_fwd",
+    "log_od_flow_rev",
+    "od_probability_rev",
+    "reverse_od_probability_rev",
+    "mean_duration_min_rev",
+    "mean_trip_distance_km_rev",
+    "mean_duration_lag_bins_rev",
+    "rental_corr",
+    "return_corr",
+    "rental_to_return_corr",
+    "best_rental_to_return_lag_norm",
+    "return_to_rental_corr",
+    "best_return_to_rental_lag_norm"
+  ],
+  "binary_columns": [
+    "same_district",
+    "operation_pair_lcd_lcd",
+    "operation_pair_lcd_qr",
+    "operation_pair_qr_lcd",
+    "operation_pair_qr_qr",
+    "has_od_flow_fwd",
+    "has_od_flow_rev"
+  ],
+  "normalization": {
+    "geo_distance_km": {
+      "mean": 1.4455897808074951,
+      "std": 1.2857586145401
+    },
+    "inverse_geo_distance": {
+      "mean": 0.4904242753982544,
+      "std": 0.1930152028799057
+    },
+    "log_od_flow_fwd": {
+      "mean": 4.107893466949463,
+      "std": 1.7574540376663208
+    },
+    "od_probability_fwd": {
+      "mean": 0.01577555201947689,
+      "std": 0.02732493355870247
+    },
+    "reverse_od_probability_fwd": {
+      "mean": 0.019289767369627953,
+      "std": 0.028051095083355904
+    },
+    "mean_duration_min_fwd": {
+      "mean": 20.534212112426758,
+      "std": 13.48367977142334
+    },
+    "mean_trip_distance_km_fwd": {
+      "mean": 2.141050338745117,
+      "std": 1.689876914024353
+    },
+    "mean_duration_lag_bins_fwd": {
+      "mean": 0.6837896108627319,
+      "std": 0.44125330448150635
+    },
+    "log_od_flow_rev": {
+      "mean": 4.176757335662842,
+      "std": 1.711164951324463
+    },
+    "od_probability_rev": {
+      "mean": 0.019559724256396294,
+      "std": 0.02913026139140129
+    },
+    "reverse_od_probability_rev": {
+      "mean": 0.01610860973596573,
+      "std": 0.02688598446547985
+    },
+    "mean_duration_min_rev": {
+      "mean": 20.30595588684082,
+      "std": 13.462041854858398
+    },
+    "mean_trip_distance_km_rev": {
+      "mean": 2.1501529216766357,
+      "std": 1.697731614112854
+    },
+    "mean_duration_lag_bins_rev": {
+      "mean": 0.6762621402740479,
+      "std": 0.43628230690956116
+    },
+    "rental_corr": {
+      "mean": 0.3183753192424774,
+      "std": 0.18294088542461395
+    },
+    "return_corr": {
+      "mean": 0.3184429705142975,
+      "std": 0.1905975341796875
+    },
+    "rental_to_return_corr": {
+      "mean": 0.27995866537094116,
+      "std": 0.13778917491436005
+    },
+    "best_rental_to_return_lag_norm": {
+      "mean": 0.3390589952468872,
+      "std": 0.18361124396324158
+    },
+    "return_to_rental_corr": {
+      "mean": 0.26382359862327576,
+      "std": 0.1377335637807846
+    },
+    "best_return_to_rental_lag_norm": {
+      "mean": 0.2945839464664459,
+      "std": 0.13479496538639069
+    }
+  },
+  "input_paths": {
+    "raw_rental_dir": "data\\raw\\rentals",
+    "station_metadata_path": "data\\preprocessed\\station\\station_metadata_clean.parquet",
+    "station_time_panel_path": "data\\preprocessed\\2025\\station_time_panel.parquet"
+  },
+  "raw_rental_files_used": [
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2501.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2502.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2503.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2504.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2505.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2506.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2507.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2508.csv",
+    "data\\raw\\rentals\\서울특별시 공공자전거 대여이력 정보_2509.csv"
+  ],
+  "num_raw_trip_rows_loaded": 28812716,
+  "num_train_trip_rows_used": 28448585,
+  "num_trips_dropped_unknown_station": 212844,
+  "num_unknown_operation_type_edges": 0,
+  "relation_summaries": {
+    "rr": {
+      "neighbor_index_shape": [
+        2780,
+        32
+      ],
+      "edge_attr_shape": [
+        2780,
+        32,
+        27
+      ],
+      "mean_score": 0.6780052781105042,
+      "min_score": 0.272945374250412,
+      "max_score": 1.5,
+      "notes": "Self-edge is forced at k=0; remaining neighbors rank rental correlation, distance, and district."
+    },
+    "dd": {
+      "neighbor_index_shape": [
+        2780,
+        32
+      ],
+      "edge_attr_shape": [
+        2780,
+        32,
+        27
+      ],
+      "mean_score": 0.68196040391922,
+      "min_score": 0.272945374250412,
+      "max_score": 1.5,
+      "notes": "Self-edge is forced at k=0; remaining neighbors rank return correlation, distance, and district."
+    },
+    "rd": {
+      "neighbor_index_shape": [
+        2780,
+        32
+      ],
+      "edge_attr_shape": [
+        2780,
+        32,
+        27
+      ],
+      "mean_score": 1.2468208074569702,
+      "min_score": 0.06754065304994583,
+      "max_score": 3.350141763687134,
+      "notes": "Ranks rental-origin to return-destination OD evidence, lagged correlation, and distance."
+    },
+    "dr": {
+      "neighbor_index_shape": [
+        2780,
+        32
+      ],
+      "edge_attr_shape": [
+        2780,
+        32,
+        27
+      ],
+      "mean_score": 1.0522569417953491,
+      "min_score": 0.06754065304994583,
+      "max_score": 2.818112850189209,
+      "notes": "Ranks reverse physical OD evidence, return-to-rental lagged correlation, and distance."
+    }
+  }
+}
